@@ -1,6 +1,6 @@
 #include "Card.h"
 
-int value0f(Rank rank) {
+int valueOf(Rank rank) {
 	switch (rank) {
 	case Rank::Two: return 2;
 	case Rank::Three: return 3;
