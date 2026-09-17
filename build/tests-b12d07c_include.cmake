@@ -1,0 +1,5 @@
+if(EXISTS "C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/tests-b12d07c_tests.cmake")
+  include("C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/tests-b12d07c_tests.cmake")
+else()
+  add_test(tests_NOT_BUILT-b12d07c tests_NOT_BUILT-b12d07c)
+endif()

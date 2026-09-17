@@ -1,0 +1,13 @@
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/CMakeFiles/BLACKJACK.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/CMakeFiles/tests.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/CMakeFiles/test.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/CMakeFiles/edit_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/CMakeFiles/rebuild_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/CMakeFiles/test.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/CMakeFiles/edit_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/CMakeFiles/rebuild_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/CMakeFiles/Catch2.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/CMakeFiles/Catch2WithMain.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/CMakeFiles/test.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/CMakeFiles/edit_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/CMakeFiles/rebuild_cache.dir

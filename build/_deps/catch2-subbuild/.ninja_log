@@ -1,0 +1,21 @@
+# ninja log v7
+5	91	8113490180264179	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-mkdir	b5d3663d6a8238e4
+5	91	8113490180264179	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-mkdir	b5d3663d6a8238e4
+92	5259	8113490231952566	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-download	684acc7491ae9295
+92	5259	8113490231952566	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-download	684acc7491ae9295
+5267	5437	8113490232123785	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-update	19e6eb2403c7bb8d
+5267	5437	8113490232123785	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-update	19e6eb2403c7bb8d
+5438	5520	8113490234556030	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-patch	ac5dbf70b8679f92
+5438	5520	8113490234556030	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-patch	ac5dbf70b8679f92
+5520	5603	8113490235396520	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-configure	aa0247e71ecd2d50
+5520	5603	8113490235396520	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-configure	aa0247e71ecd2d50
+5604	5684	8113490236208959	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-build	87cd6f8a606bccbd
+5604	5684	8113490236208959	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-build	87cd6f8a606bccbd
+5685	5766	8113490237028021	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-install	696e19555b1eba13
+5685	5766	8113490237028021	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-install	696e19555b1eba13
+5766	5861	8113490237977470	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-test	4546c745d9c6c67b
+5766	5861	8113490237977470	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-test	4546c745d9c6c67b
+5862	5976	8113490239124717	CMakeFiles/catch2-populate-complete	43806f0c8091c1f1
+5862	5976	8113490239124717	catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-done	43806f0c8091c1f1
+5862	5976	8113490239124717	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/CMakeFiles/catch2-populate-complete	43806f0c8091c1f1
+5862	5976	8113490239124717	C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/catch2-populate-prefix/src/catch2-populate-stamp/catch2-populate-done	43806f0c8091c1f1

@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/cmake_install.cmake",
+		"C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/cmake_install.cmake",
+		"C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-build/src/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

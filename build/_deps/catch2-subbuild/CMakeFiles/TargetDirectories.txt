@@ -1,0 +1,3 @@
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/CMakeFiles/catch2-populate.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/CMakeFiles/edit_cache.dir
+C:/Users/SPAC-B-11/source/Projekt/BLACKJACK/build/_deps/catch2-subbuild/CMakeFiles/rebuild_cache.dir

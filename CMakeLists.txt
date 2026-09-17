@@ -14,7 +14,7 @@ endif()
 project ("BLACKJACK")
 
 # Add source to this project's executable.
-add_executable (BLACKJACK "BLACKJACK.cpp" "BLACKJACK.h")
+add_executable (BLACKJACK "BLACKJACK.cpp" "BLACKJACK.h" "Card.cpp")
 
 # --- Tests ---
 enable_testing()
@@ -29,8 +29,12 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(tests
     tests/CardTests.cpp
-    # tilføj Card.cpp her, når du opretter den
+    Card.cpp
 )
+if (MSVC)
+  target_compile_options(tests PRIVATE /Zc:preprocessor)
+endif()
+target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 
 include(Catch)
