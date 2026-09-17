@@ -1,9 +1,10 @@
 ﻿# CMakeList.txt : CMake project for BLACKJACK, include source and define
 # project specific logic here.
 #
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required (VERSION 3.14)
 set(CMAKE_CXX_STANDARD 17) 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
@@ -15,8 +16,22 @@ project ("BLACKJACK")
 # Add source to this project's executable.
 add_executable (BLACKJACK "BLACKJACK.cpp" "BLACKJACK.h")
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET BLACKJACK PROPERTY CXX_STANDARD 20)
-endif()
+# --- Tests ---
+enable_testing()
 
-# TODO: Add tests and install targets if needed.
+include(FetchContent)
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG        v3.5.2
+)
+FetchContent_MakeAvailable(Catch2)
+
+add_executable(tests
+    tests/CardTests.cpp
+    # tilføj Card.cpp her, når du opretter den
+)
+target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
+
+include(Catch)
+catch_discover_tests(tests)
