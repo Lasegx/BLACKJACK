@@ -14,7 +14,7 @@ endif()
 project ("BLACKJACK")
 
 # Add source to this project's executable.
-add_executable (BLACKJACK "BLACKJACK.cpp" "BLACKJACK.h" "Card.cpp")
+add_executable (BLACKJACK "BLACKJACK.cpp" "BLACKJACK.h" "Card.cpp" "Deck.cpp")
 
 # --- Tests ---
 enable_testing()
@@ -30,6 +30,8 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(tests
     tests/CardTests.cpp
     Card.cpp
+    tests/DeckTests.cpp
+    Deck.cpp
 )
 if (MSVC)
   target_compile_options(tests PRIVATE /Zc:preprocessor)
