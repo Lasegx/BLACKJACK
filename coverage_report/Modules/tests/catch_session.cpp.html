@@ -1,0 +1,390 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_session.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/catch_session.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_list.hpp&gt;
+#include &lt;catch2/internal/catch_context.hpp&gt;
+#include &lt;catch2/internal/catch_run_context.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/catch_version.hpp&gt;
+#include &lt;catch2/internal/catch_startup_exception_registry.hpp&gt;
+#include &lt;catch2/internal/catch_sharding.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_registry_impl.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/internal/catch_windows_h_proxy.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_multi.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_reporter_factory.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_stdstreams.hpp&gt;
+#include &lt;catch2/internal/catch_istream.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;cassert&gt;
+#include &lt;exception&gt;
+#include &lt;iomanip&gt;
+#include &lt;set&gt;
+
+namespace Catch {
+
+    namespace {
+        const int MaxExitCode = 255;
+
+<span style = "background-color:#dfd">        IEventListenerPtr createReporter(std::string const&amp; reporterName, ReporterConfig&amp;&amp; config) {
+            auto reporter = Catch::getRegistryHub().getReporterRegistry().create(reporterName, CATCH_MOVE(config));
+            CATCH_ENFORCE(reporter, "No reporter registered with name: '" &lt;&lt; reporterName &lt;&lt; '\'');</span>
+
+<span style = "background-color:#dfd">            return reporter;
+        }</span>
+
+<span style = "background-color:#dfd">        IEventListenerPtr prepareReporters(Config const* config) {</span>
+            if (Catch::getRegistryHub().getReporterRegistry().getListeners().empty()
+<span style = "background-color:#dfd">                    &amp;&amp; config-&gt;getProcessedReporterSpecs().size() == 1) {
+                auto const&amp; spec = config-&gt;getProcessedReporterSpecs()[0];
+                return createReporter(</span>
+                    spec.name,
+                    ReporterConfig( config,
+                                    makeStream( spec.outputFilename ),
+                                    spec.colourMode,
+                                    spec.customOptions ) );
+            }
+
+<span style = "background-color:#fdd">            auto multi = Detail::make_unique&lt;MultiReporter&gt;(config);</span>
+
+<span style = "background-color:#fdd">            auto const&amp; listeners = Catch::getRegistryHub().getReporterRegistry().getListeners();
+            for (auto const&amp; listener : listeners) {
+                multi-&gt;addListener(listener-&gt;create(config));
+            }</span>
+
+<span style = "background-color:#fdd">            for ( auto const&amp; reporterSpec : config-&gt;getProcessedReporterSpecs() ) {
+                multi-&gt;addReporter( createReporter(</span>
+                    reporterSpec.name,
+                    ReporterConfig( config,
+                                    makeStream( reporterSpec.outputFilename ),
+                                    reporterSpec.colourMode,
+                                    reporterSpec.customOptions ) ) );
+<span style = "background-color:#fdd">            }</span>
+
+<span style = "background-color:#fdd">            return multi;</span>
+<span style = "background-color:#dfd">        }</span>
+
+        class TestGroup {
+        public:
+            explicit TestGroup(IEventListenerPtr&amp;&amp; reporter, Config const* config):
+<span style = "background-color:#dfd">                m_reporter(reporter.get()),
+                m_config{config},
+                m_context{config, CATCH_MOVE(reporter)} {</span>
+
+<span style = "background-color:#dfd">                assert( m_config-&gt;testSpec().getInvalidSpecs().empty() &amp;&amp;</span>
+                        "Invalid test specs should be handled before running tests" );
+
+<span style = "background-color:#dfd">                auto const&amp; allTestCases = getAllTestCasesSorted(*m_config);
+                auto const&amp; testSpec = m_config-&gt;testSpec();
+                if ( !testSpec.hasFilters() ) {
+                    for ( auto const&amp; test : allTestCases ) {
+                        if ( !test.getTestCaseInfo().isHidden() ) {
+                            m_tests.emplace( &amp;test );</span>
+                        }
+<span style = "background-color:#dfd">                    }
+                } else {</span>
+<span style = "background-color:#fdd">                    m_matches =</span>
+                        testSpec.matchesByFilter( allTestCases, *m_config );
+<span style = "background-color:#fdd">                    for ( auto const&amp; match : m_matches ) {
+                        m_tests.insert( match.tests.begin(),</span>
+                                        match.tests.end() );
+<span style = "background-color:#fdd">                    }</span>
+                }
+
+<span style = "background-color:#dfd">                m_tests = createShard(m_tests, m_config-&gt;shardCount(), m_config-&gt;shardIndex());
+            }</span>
+
+<span style = "background-color:#dfd">            Totals execute() {
+                Totals totals;
+                for (auto const&amp; testCase : m_tests) {
+                    if (!m_context.aborting())
+                        totals += m_context.runTest(*testCase);</span>
+                    else
+<span style = "background-color:#fdd">                        m_reporter-&gt;skipTest(testCase-&gt;getTestCaseInfo());</span>
+<span style = "background-color:#dfd">                }</span>
+
+<span style = "background-color:#dfd">                for (auto const&amp; match : m_matches) {</span>
+<span style = "background-color:#fdd">                    if (match.tests.empty()) {
+                        m_unmatchedTestSpecs = true;
+                        m_reporter-&gt;noMatchingTestCases( match.name );</span>
+                    }
+<span style = "background-color:#fdd">                }</span>
+
+<span style = "background-color:#dfd">                return totals;
+            }</span>
+
+<span style = "background-color:#dfd">            bool hadUnmatchedTestSpecs() const {
+                return m_unmatchedTestSpecs;
+            }</span>
+
+
+        private:
+            IEventListener* m_reporter;
+            Config const* m_config;
+            RunContext m_context;
+            std::set&lt;TestCaseHandle const*&gt; m_tests;
+            TestSpec::Matches m_matches;
+<span style = "background-color:#dfd">            bool m_unmatchedTestSpecs = false;</span>
+        };
+
+<span style = "background-color:#fdd">        void applyFilenamesAsTags() {
+            for (auto const&amp; testInfo : getRegistryHub().getTestCaseRegistry().getAllInfos()) {
+                testInfo-&gt;addFilenameTag();
+            }
+        }</span>
+
+    } // anon namespace
+
+<span style = "background-color:#dfd">    Session::Session() {</span>
+        static bool alreadyInstantiated = false;
+<span style = "background-color:#dfd">        if( alreadyInstantiated ) {</span>
+<span style = "background-color:#fdd">            CATCH_TRY { CATCH_INTERNAL_ERROR( "Only one instance of Catch::Session can ever be used" ); }
+            CATCH_CATCH_ALL { getMutableRegistryHub().registerStartupException(); }</span>
+        }
+
+        // There cannot be exceptions at startup in no-exception mode.
+#if !defined(CATCH_CONFIG_DISABLE_EXCEPTIONS)
+<span style = "background-color:#dfd">        const auto&amp; exceptions = getRegistryHub().getStartupExceptionRegistry().getExceptions();
+        if ( !exceptions.empty() ) {</span>
+<span style = "background-color:#fdd">            config();
+            getCurrentMutableContext().setConfig(m_config.get());</span>
+
+<span style = "background-color:#fdd">            m_startupExceptions = true;
+            auto errStream = makeStream( "%stderr" );
+            auto colourImpl = makeColourImpl(</span>
+                ColourMode::PlatformDefault, errStream.get() );
+<span style = "background-color:#fdd">            auto guard = colourImpl-&gt;guardColour( Colour::Red );
+            errStream-&gt;stream() &lt;&lt; "Errors occurred during startup!" &lt;&lt; '\n';</span>
+            // iterate over all exceptions and notify user
+<span style = "background-color:#fdd">            for ( const auto&amp; ex_ptr : exceptions ) {</span>
+                try {
+<span style = "background-color:#fdd">                    std::rethrow_exception(ex_ptr);
+                } catch ( std::exception const&amp; ex ) {
+                    errStream-&gt;stream() &lt;&lt; TextFlow::Column( ex.what() ).indent(2) &lt;&lt; '\n';
+                }
+            }
+        }</span>
+#endif
+
+<span style = "background-color:#dfd">        alreadyInstantiated = true;
+        m_cli = makeCommandLineParser( m_configData );
+    }
+    Session::~Session() {
+        Catch::cleanUp();
+    }</span>
+
+<span style = "background-color:#fdd">    void Session::showHelp() const {
+        Catch::cout()</span>
+                &lt;&lt; "\nCatch2 v" &lt;&lt; libraryVersion() &lt;&lt; '\n'
+                &lt;&lt; m_cli &lt;&lt; '\n'
+                &lt;&lt; "For more detailed usage please see the project docs\n\n" &lt;&lt; std::flush;
+<span style = "background-color:#fdd">    }
+    void Session::libIdentify() {
+        Catch::cout()</span>
+                &lt;&lt; std::left &lt;&lt; std::setw(16) &lt;&lt; "description: " &lt;&lt; "A Catch2 test executable\n"
+                &lt;&lt; std::left &lt;&lt; std::setw(16) &lt;&lt; "category: " &lt;&lt; "testframework\n"
+                &lt;&lt; std::left &lt;&lt; std::setw(16) &lt;&lt; "framework: " &lt;&lt; "Catch2\n"
+                &lt;&lt; std::left &lt;&lt; std::setw(16) &lt;&lt; "version: " &lt;&lt; libraryVersion() &lt;&lt; '\n' &lt;&lt; std::flush;
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#dfd">    int Session::applyCommandLine( int argc, char const * const * argv ) {
+        if( m_startupExceptions )</span>
+<span style = "background-color:#fdd">            return 1;</span>
+
+<span style = "background-color:#dfd">        auto result = m_cli.parse( Clara::Args( argc, argv ) );</span>
+
+<span style = "background-color:#dfd">        if( !result ) {</span>
+<span style = "background-color:#fdd">            config();
+            getCurrentMutableContext().setConfig(m_config.get());
+            auto errStream = makeStream( "%stderr" );
+            auto colour = makeColourImpl( ColourMode::PlatformDefault, errStream.get() );</span>
+
+<span style = "background-color:#fdd">            errStream-&gt;stream()</span>
+                &lt;&lt; colour-&gt;guardColour( Colour::Red )
+                &lt;&lt; "\nError(s) in input:\n"
+                &lt;&lt; TextFlow::Column( result.errorMessage() ).indent( 2 )
+                &lt;&lt; "\n\n";
+<span style = "background-color:#fdd">            errStream-&gt;stream() &lt;&lt; "Run with -? for usage\n\n" &lt;&lt; std::flush;
+            return MaxExitCode;</span>
+        }
+
+<span style = "background-color:#dfd">        if( m_configData.showHelp )</span>
+<span style = "background-color:#fdd">            showHelp();</span>
+<span style = "background-color:#dfd">        if( m_configData.libIdentify )</span>
+<span style = "background-color:#fdd">            libIdentify();</span>
+
+<span style = "background-color:#dfd">        m_config.reset();
+        return 0;
+    }</span>
+
+#if defined(CATCH_CONFIG_WCHAR) &amp;&amp; defined(_WIN32) &amp;&amp; defined(UNICODE)
+    int Session::applyCommandLine( int argc, wchar_t const * const * argv ) {
+
+        char **utf8Argv = new char *[ argc ];
+
+        for ( int i = 0; i &lt; argc; ++i ) {
+            int bufSize = WideCharToMultiByte( CP_UTF8, 0, argv[i], -1, nullptr, 0, nullptr, nullptr );
+
+            utf8Argv[ i ] = new char[ bufSize ];
+
+            WideCharToMultiByte( CP_UTF8, 0, argv[i], -1, utf8Argv[i], bufSize, nullptr, nullptr );
+        }
+
+        int returnCode = applyCommandLine( argc, utf8Argv );
+
+        for ( int i = 0; i &lt; argc; ++i )
+            delete [] utf8Argv[ i ];
+
+        delete [] utf8Argv;
+
+        return returnCode;
+    }
+#endif
+
+<span style = "background-color:#fdd">    void Session::useConfigData( ConfigData const&amp; configData ) {
+        m_configData = configData;
+        m_config.reset();
+    }</span>
+
+<span style = "background-color:#dfd">    int Session::run() {
+        if( ( m_configData.waitForKeypress &amp; WaitForKeypress::BeforeStart ) != 0 ) {</span>
+<span style = "background-color:#fdd">            Catch::cout() &lt;&lt; "...waiting for enter/ return before starting\n" &lt;&lt; std::flush;
+            static_cast&lt;void&gt;(std::getchar());</span>
+        }
+<span style = "background-color:#dfd">        int exitCode = runInternal();
+        if( ( m_configData.waitForKeypress &amp; WaitForKeypress::BeforeExit ) != 0 ) {</span>
+<span style = "background-color:#fdd">            Catch::cout() &lt;&lt; "...waiting for enter/ return before exiting, with code: " &lt;&lt; exitCode &lt;&lt; '\n' &lt;&lt; std::flush;
+            static_cast&lt;void&gt;(std::getchar());</span>
+        }
+<span style = "background-color:#dfd">        return exitCode;
+    }</span>
+
+<span style = "background-color:#fdd">    Clara::Parser const&amp; Session::cli() const {
+        return m_cli;
+    }
+    void Session::cli( Clara::Parser const&amp; newParser ) {
+        m_cli = newParser;
+    }
+    ConfigData&amp; Session::configData() {
+        return m_configData;
+    }</span>
+<span style = "background-color:#dfd">    Config&amp; Session::config() {
+        if( !m_config )
+            m_config = Detail::make_unique&lt;Config&gt;( m_configData );
+        return *m_config;
+    }</span>
+
+<span style = "background-color:#dfd">    int Session::runInternal() {
+        if( m_startupExceptions )</span>
+<span style = "background-color:#fdd">            return 1;</span>
+
+<span style = "background-color:#dfd">        if (m_configData.showHelp || m_configData.libIdentify) {</span>
+<span style = "background-color:#fdd">            return 0;</span>
+        }
+
+<span style = "background-color:#dfd">        if ( m_configData.shardIndex &gt;= m_configData.shardCount ) {</span>
+<span style = "background-color:#fdd">            Catch::cerr() &lt;&lt; "The shard count (" &lt;&lt; m_configData.shardCount</span>
+                          &lt;&lt; ") must be greater than the shard index ("
+                          &lt;&lt; m_configData.shardIndex &lt;&lt; ")\n"
+                          &lt;&lt; std::flush;
+<span style = "background-color:#fdd">            return 1;</span>
+        }
+
+        CATCH_TRY {
+<span style = "background-color:#dfd">            config(); // Force config to be constructed</span>
+
+<span style = "background-color:#dfd">            seedRng( *m_config );</span>
+
+<span style = "background-color:#dfd">            if (m_configData.filenamesAsTags) {</span>
+<span style = "background-color:#fdd">                applyFilenamesAsTags();</span>
+            }
+
+            // Set up global config instance before we start calling into other functions
+<span style = "background-color:#dfd">            getCurrentMutableContext().setConfig(m_config.get());</span>
+
+            // Create reporter(s) so we can route listings through them
+<span style = "background-color:#dfd">            auto reporter = prepareReporters(m_config.get());</span>
+
+<span style = "background-color:#dfd">            auto const&amp; invalidSpecs = m_config-&gt;testSpec().getInvalidSpecs();
+            if ( !invalidSpecs.empty() ) {</span>
+<span style = "background-color:#fdd">                for ( auto const&amp; spec : invalidSpecs ) {
+                    reporter-&gt;reportInvalidTestSpec( spec );
+                }
+                return 1;</span>
+            }
+
+
+            // Handle list request
+<span style = "background-color:#dfd">            if (list(*reporter, *m_config)) {</span>
+<span style = "background-color:#fdd">                return 0;</span>
+            }
+
+<span style = "background-color:#dfd">            TestGroup tests { CATCH_MOVE(reporter), m_config.get() };
+            auto const totals = tests.execute();</span>
+
+            if ( tests.hadUnmatchedTestSpecs()
+<span style = "background-color:#dfd">                &amp;&amp; m_config-&gt;warnAboutUnmatchedTestSpecs() ) {</span>
+<span style = "background-color:#fdd">                return 3;</span>
+            }
+
+            if ( totals.testCases.total() == 0
+<span style = "background-color:#dfd">                &amp;&amp; !m_config-&gt;zeroTestsCountAsSuccess() ) {</span>
+<span style = "background-color:#fdd">                return 2;</span>
+            }
+
+            if ( totals.testCases.total() &gt; 0 &amp;&amp;
+                 totals.testCases.total() == totals.testCases.skipped
+<span style = "background-color:#dfd">                &amp;&amp; !m_config-&gt;zeroTestsCountAsSuccess() ) {</span>
+<span style = "background-color:#fdd">                return 4;</span>
+            }
+
+            // Note that on unices only the lower 8 bits are usually used, clamping
+            // the return value to 255 prevents false negative when some multiple
+            // of 256 tests has failed
+<span style = "background-color:#dfd">            return (std::min) (MaxExitCode, static_cast&lt;int&gt;(totals.assertions.failed));</span>
+        }
+#if !defined(CATCH_CONFIG_DISABLE_EXCEPTIONS)
+<span style = "background-color:#fdd">        catch( std::exception&amp; ex ) {
+            Catch::cerr() &lt;&lt; ex.what() &lt;&lt; '\n' &lt;&lt; std::flush;
+            return MaxExitCode;
+        }</span>
+#endif
+<span style = "background-color:#dfd">    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

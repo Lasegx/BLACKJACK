@@ -1,0 +1,177 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_case_registry_impl.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_test_case_registry_impl.hpp&gt;
+
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_registry_hub.hpp&gt;
+#include &lt;catch2/internal/catch_sharding.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_info_hasher.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;set&gt;
+
+namespace Catch {
+
+    namespace {
+        static void enforceNoDuplicateTestCases(
+<span style = "background-color:#dfd">            std::vector&lt;TestCaseHandle&gt; const&amp; tests ) {
+            auto testInfoCmp = []( TestCaseInfo const* lhs,</span>
+                                   TestCaseInfo const* rhs ) {
+<span style = "background-color:#dfd">                return *lhs &lt; *rhs;
+            };
+            std::set&lt;TestCaseInfo const*, decltype( testInfoCmp )&amp;&gt; seenTests(</span>
+                testInfoCmp );
+<span style = "background-color:#dfd">            for ( auto const&amp; test : tests ) {
+                const auto infoPtr = &amp;test.getTestCaseInfo();
+                const auto prev = seenTests.insert( infoPtr );
+                CATCH_ENFORCE( prev.second,</span>
+                               "error: test case \""
+                                   &lt;&lt; infoPtr-&gt;name &lt;&lt; "\", with tags \""
+                                   &lt;&lt; infoPtr-&gt;tagsAsString()
+                                   &lt;&lt; "\" already defined.\n"
+                                   &lt;&lt; "\tFirst seen at "
+                                   &lt;&lt; ( *prev.first )-&gt;lineInfo &lt;&lt; "\n"
+                                   &lt;&lt; "\tRedefined at " &lt;&lt; infoPtr-&gt;lineInfo );
+<span style = "background-color:#dfd">            }
+        }</span>
+
+        static bool matchTest( TestCaseHandle const&amp; testCase,
+                               TestSpec const&amp; testSpec,
+<span style = "background-color:#fdd">                               IConfig const&amp; config ) {
+            return testSpec.matches( testCase.getTestCaseInfo() ) &amp;&amp;</span>
+                   isThrowSafe( testCase, config );
+<span style = "background-color:#fdd">        }</span>
+
+    } // end unnamed namespace
+
+<span style = "background-color:#dfd">    std::vector&lt;TestCaseHandle&gt; sortTests( IConfig const&amp; config, std::vector&lt;TestCaseHandle&gt; const&amp; unsortedTestCases ) {
+        switch (config.runOrder()) {</span>
+        case TestRunOrder::Declared:
+<span style = "background-color:#dfd">            return unsortedTestCases;</span>
+
+        case TestRunOrder::LexicographicallySorted: {
+<span style = "background-color:#fdd">            std::vector&lt;TestCaseHandle&gt; sorted = unsortedTestCases;
+            std::sort(</span>
+                sorted.begin(),
+                sorted.end(),
+                []( TestCaseHandle const&amp; lhs, TestCaseHandle const&amp; rhs ) {
+<span style = "background-color:#fdd">                    return lhs.getTestCaseInfo() &lt; rhs.getTestCaseInfo();
+                }</span>
+            );
+<span style = "background-color:#fdd">            return sorted;</span>
+        }
+        case TestRunOrder::Randomized: {
+            using TestWithHash = std::pair&lt;TestCaseInfoHasher::hash_t, TestCaseHandle&gt;;
+
+<span style = "background-color:#fdd">            TestCaseInfoHasher h{ config.rngSeed() };
+            std::vector&lt;TestWithHash&gt; indexed_tests;
+            indexed_tests.reserve(unsortedTestCases.size());</span>
+
+<span style = "background-color:#fdd">            for (auto const&amp; handle : unsortedTestCases) {
+                indexed_tests.emplace_back(h(handle.getTestCaseInfo()), handle);
+            }</span>
+
+<span style = "background-color:#fdd">            std::sort( indexed_tests.begin(),</span>
+                       indexed_tests.end(),
+                       []( TestWithHash const&amp; lhs, TestWithHash const&amp; rhs ) {
+<span style = "background-color:#fdd">                           if ( lhs.first == rhs.first ) {
+                               return lhs.second.getTestCaseInfo() &lt;</span>
+                                      rhs.second.getTestCaseInfo();
+                           }
+<span style = "background-color:#fdd">                           return lhs.first &lt; rhs.first;
+                       } );</span>
+
+<span style = "background-color:#fdd">            std::vector&lt;TestCaseHandle&gt; randomized;
+            randomized.reserve(indexed_tests.size());</span>
+
+<span style = "background-color:#fdd">            for (auto const&amp; indexed : indexed_tests) {
+                randomized.push_back(indexed.second);
+            }</span>
+
+<span style = "background-color:#fdd">            return randomized;</span>
+        }
+        }
+
+<span style = "background-color:#fdd">        CATCH_INTERNAL_ERROR("Unknown test order value!");</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#fdd">    bool isThrowSafe( TestCaseHandle const&amp; testCase, IConfig const&amp; config ) {
+        return !testCase.getTestCaseInfo().throws() || config.allowThrows();
+    }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;TestCaseHandle&gt; filterTests( std::vector&lt;TestCaseHandle&gt; const&amp; testCases, TestSpec const&amp; testSpec, IConfig const&amp; config ) {
+        std::vector&lt;TestCaseHandle&gt; filtered;
+        filtered.reserve( testCases.size() );
+        for (auto const&amp; testCase : testCases) {
+            if ((!testSpec.hasFilters() &amp;&amp; !testCase.getTestCaseInfo().isHidden()) ||</span>
+                (testSpec.hasFilters() &amp;&amp; matchTest(testCase, testSpec, config))) {
+<span style = "background-color:#fdd">                filtered.push_back(testCase);</span>
+            }
+<span style = "background-color:#fdd">        }
+        return createShard(filtered, config.shardCount(), config.shardIndex());
+    }</span>
+<span style = "background-color:#dfd">    std::vector&lt;TestCaseHandle&gt; const&amp; getAllTestCasesSorted( IConfig const&amp; config ) {
+        return getRegistryHub().getTestCaseRegistry().getAllTestsSorted( config );
+    }</span>
+
+<span style = "background-color:#dfd">    void TestRegistry::registerTest(Detail::unique_ptr&lt;TestCaseInfo&gt; testInfo, Detail::unique_ptr&lt;ITestInvoker&gt; testInvoker) {
+        m_handles.emplace_back(testInfo.get(), testInvoker.get());
+        m_viewed_test_infos.push_back(testInfo.get());
+        m_owned_test_infos.push_back(CATCH_MOVE(testInfo));
+        m_invokers.push_back(CATCH_MOVE(testInvoker));
+    }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;TestCaseInfo*&gt; const&amp; TestRegistry::getAllInfos() const {
+        return m_viewed_test_infos;
+    }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;TestCaseHandle&gt; const&amp; TestRegistry::getAllTests() const {
+        return m_handles;
+    }</span>
+<span style = "background-color:#dfd">    std::vector&lt;TestCaseHandle&gt; const&amp; TestRegistry::getAllTestsSorted( IConfig const&amp; config ) const {
+        if( m_sortedFunctions.empty() )
+            enforceNoDuplicateTestCases( m_handles );</span>
+
+<span style = "background-color:#dfd">        if(  m_currentSortOrder != config.runOrder() || m_sortedFunctions.empty() ) {
+            m_sortedFunctions = sortTests( config, m_handles );
+            m_currentSortOrder = config.runOrder();</span>
+        }
+<span style = "background-color:#dfd">        return m_sortedFunctions;
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

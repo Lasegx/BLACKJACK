@@ -1,0 +1,176 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_message.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_MESSAGE_HPP_INCLUDED
+#define CATCH_MESSAGE_HPP_INCLUDED
+
+#include &lt;catch2/internal/catch_config_prefix_messages.hpp&gt;
+#include &lt;catch2/internal/catch_result_type.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_stream_end_stop.hpp&gt;
+#include &lt;catch2/internal/catch_message_info.hpp&gt;
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_capture.hpp&gt;
+
+#include &lt;string&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+
+    struct SourceLineInfo;
+    class IResultCapture;
+
+    struct MessageStream {
+
+        template&lt;typename T&gt;
+        MessageStream&amp; operator &lt;&lt; ( T const&amp; value ) {
+            m_stream &lt;&lt; value;
+            return *this;
+        }
+
+        ReusableStringStream m_stream;
+    };
+
+    struct MessageBuilder : MessageStream {
+        MessageBuilder( StringRef macroName,
+                        SourceLineInfo const&amp; lineInfo,
+                        ResultWas::OfType type ):
+<span style = "background-color:#fdd">            m_info(macroName, lineInfo, type) {}</span>
+
+        template&lt;typename T&gt;
+        MessageBuilder&amp;&amp; operator &lt;&lt; ( T const&amp; value ) &amp;&amp; {
+            m_stream &lt;&lt; value;
+            return CATCH_MOVE(*this);
+        }
+
+        MessageInfo m_info;
+    };
+
+    class ScopedMessage {
+    public:
+        explicit ScopedMessage( MessageBuilder&amp;&amp; builder );
+        ScopedMessage( ScopedMessage&amp; duplicate ) = delete;
+        ScopedMessage( ScopedMessage&amp;&amp; old ) noexcept;
+        ~ScopedMessage();
+
+        MessageInfo m_info;
+<span style = "background-color:#fdd">        bool m_moved = false;</span>
+    };
+
+    class Capturer {
+        std::vector&lt;MessageInfo&gt; m_messages;
+        IResultCapture&amp; m_resultCapture;
+<span style = "background-color:#fdd">        size_t m_captured = 0;</span>
+    public:
+        Capturer( StringRef macroName, SourceLineInfo const&amp; lineInfo, ResultWas::OfType resultType, StringRef names );
+
+        Capturer(Capturer const&amp;) = delete;
+        Capturer&amp; operator=(Capturer const&amp;) = delete;
+
+        ~Capturer();
+
+        void captureValue( size_t index, std::string const&amp; value );
+
+        template&lt;typename T&gt;
+        void captureValues( size_t index, T const&amp; value ) {
+            captureValue( index, Catch::Detail::stringify( value ) );
+        }
+
+        template&lt;typename T, typename... Ts&gt;
+        void captureValues( size_t index, T const&amp; value, Ts const&amp;... values ) {
+            captureValue( index, Catch::Detail::stringify(value) );
+            captureValues( index+1, values... );
+        }
+    };
+
+} // end namespace Catch
+
+///////////////////////////////////////////////////////////////////////////////
+#define INTERNAL_CATCH_MSG( macroName, messageType, resultDisposition, ... ) \
+    do { \
+        Catch::AssertionHandler catchAssertionHandler( macroName##_catch_sr, CATCH_INTERNAL_LINEINFO, Catch::StringRef(), resultDisposition ); \
+        catchAssertionHandler.handleMessage( messageType, ( Catch::MessageStream() &lt;&lt; __VA_ARGS__ + ::Catch::StreamEndStop() ).m_stream.str() ); \
+        INTERNAL_CATCH_REACT( catchAssertionHandler ) \
+    } while( false )
+
+///////////////////////////////////////////////////////////////////////////////
+#define INTERNAL_CATCH_CAPTURE( varName, macroName, ... ) \
+    Catch::Capturer varName( macroName##_catch_sr,        \
+                             CATCH_INTERNAL_LINEINFO,     \
+                             Catch::ResultWas::Info,      \
+                             #__VA_ARGS__##_catch_sr );   \
+    varName.captureValues( 0, __VA_ARGS__ )
+
+///////////////////////////////////////////////////////////////////////////////
+#define INTERNAL_CATCH_INFO( macroName, log ) \
+    const Catch::ScopedMessage INTERNAL_CATCH_UNIQUE_NAME( scopedMessage )( Catch::MessageBuilder( macroName##_catch_sr, CATCH_INTERNAL_LINEINFO, Catch::ResultWas::Info ) &lt;&lt; log )
+
+///////////////////////////////////////////////////////////////////////////////
+#define INTERNAL_CATCH_UNSCOPED_INFO( macroName, log ) \
+    Catch::getResultCapture().emplaceUnscopedMessage( Catch::MessageBuilder( macroName##_catch_sr, CATCH_INTERNAL_LINEINFO, Catch::ResultWas::Info ) &lt;&lt; log )
+
+
+#if defined(CATCH_CONFIG_PREFIX_MESSAGES) &amp;&amp; !defined(CATCH_CONFIG_DISABLE)
+
+  #define CATCH_INFO( msg ) INTERNAL_CATCH_INFO( "CATCH_INFO", msg )
+  #define CATCH_UNSCOPED_INFO( msg ) INTERNAL_CATCH_UNSCOPED_INFO( "CATCH_UNSCOPED_INFO", msg )
+  #define CATCH_WARN( msg ) INTERNAL_CATCH_MSG( "CATCH_WARN", Catch::ResultWas::Warning, Catch::ResultDisposition::ContinueOnFailure, msg )
+  #define CATCH_CAPTURE( ... ) INTERNAL_CATCH_CAPTURE( INTERNAL_CATCH_UNIQUE_NAME(capturer), "CATCH_CAPTURE", __VA_ARGS__ )
+
+#elif defined(CATCH_CONFIG_PREFIX_MESSAGES) &amp;&amp; defined(CATCH_CONFIG_DISABLE)
+
+  #define CATCH_INFO( msg )          (void)(0)
+  #define CATCH_UNSCOPED_INFO( msg ) (void)(0)
+  #define CATCH_WARN( msg )          (void)(0)
+  #define CATCH_CAPTURE( ... )       (void)(0)
+
+#elif !defined(CATCH_CONFIG_PREFIX_MESSAGES) &amp;&amp; !defined(CATCH_CONFIG_DISABLE)
+
+  #define INFO( msg ) INTERNAL_CATCH_INFO( "INFO", msg )
+  #define UNSCOPED_INFO( msg ) INTERNAL_CATCH_UNSCOPED_INFO( "UNSCOPED_INFO", msg )
+  #define WARN( msg ) INTERNAL_CATCH_MSG( "WARN", Catch::ResultWas::Warning, Catch::ResultDisposition::ContinueOnFailure, msg )
+  #define CAPTURE( ... ) INTERNAL_CATCH_CAPTURE( INTERNAL_CATCH_UNIQUE_NAME(capturer), "CAPTURE", __VA_ARGS__ )
+
+#elif !defined(CATCH_CONFIG_PREFIX_MESSAGES) &amp;&amp; defined(CATCH_CONFIG_DISABLE)
+
+  #define INFO( msg )          (void)(0)
+  #define UNSCOPED_INFO( msg ) (void)(0)
+  #define WARN( msg )          (void)(0)
+  #define CAPTURE( ... )       (void)(0)
+
+#endif // end of user facing macro declarations
+
+
+
+
+#endif // CATCH_MESSAGE_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

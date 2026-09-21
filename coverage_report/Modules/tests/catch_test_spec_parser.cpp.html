@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_spec_parser.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_test_spec_parser.hpp&gt;
+
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_tag_alias_registry.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+
+namespace Catch {
+
+<span style = "background-color:#dfd">    TestSpecParser::TestSpecParser( ITagAliasRegistry const&amp; tagAliases ) : m_tagAliases( &amp;tagAliases ) {}</span>
+
+<span style = "background-color:#fdd">    TestSpecParser&amp; TestSpecParser::parse( std::string const&amp; arg ) {
+        m_mode = None;
+        m_exclusion = false;
+        m_arg = m_tagAliases-&gt;expandAliases( arg );
+        m_escapeChars.clear();
+        m_substring.reserve(m_arg.size());
+        m_patternName.reserve(m_arg.size());
+        m_realPatternPos = 0;</span>
+
+<span style = "background-color:#fdd">        for( m_pos = 0; m_pos &lt; m_arg.size(); ++m_pos )</span>
+          //if visitChar fails
+<span style = "background-color:#fdd">           if( !visitChar( m_arg[m_pos] ) ){
+               m_testSpec.m_invalidSpecs.push_back(arg);
+               break;
+           }
+        endMode();
+        return *this;
+    }</span>
+<span style = "background-color:#dfd">    TestSpec TestSpecParser::testSpec() {
+        addFilter();
+        return CATCH_MOVE(m_testSpec);
+    }</span>
+<span style = "background-color:#fdd">    bool TestSpecParser::visitChar( char c ) {
+        if( (m_mode != EscapedName) &amp;&amp; (c == '\\') ) {
+            escape();
+            addCharToPattern(c);
+            return true;
+        }else if((m_mode != EscapedName) &amp;&amp; (c == ',') )  {
+            return separate();</span>
+        }
+
+<span style = "background-color:#fdd">        switch( m_mode ) {</span>
+        case None:
+<span style = "background-color:#fdd">            if( processNoneChar( c ) )
+                return true;
+            break;</span>
+        case Name:
+<span style = "background-color:#fdd">            processNameChar( c );
+            break;</span>
+        case EscapedName:
+<span style = "background-color:#fdd">            endMode();
+            addCharToPattern(c);
+            return true;</span>
+        default:
+        case Tag:
+        case QuotedName:
+<span style = "background-color:#fdd">            if( processOtherChar( c ) )
+                return true;</span>
+            break;
+        }
+
+<span style = "background-color:#fdd">        m_substring += c;
+        if( !isControlChar( c ) ) {
+            m_patternName += c;
+            m_realPatternPos++;</span>
+        }
+<span style = "background-color:#fdd">        return true;
+    }</span>
+    // Two of the processing methods return true to signal the caller to return
+    // without adding the given character to the current pattern strings
+<span style = "background-color:#fdd">    bool TestSpecParser::processNoneChar( char c ) {
+        switch( c ) {</span>
+        case ' ':
+<span style = "background-color:#fdd">            return true;</span>
+        case '~':
+<span style = "background-color:#fdd">            m_exclusion = true;
+            return false;</span>
+        case '[':
+<span style = "background-color:#fdd">            startNewMode( Tag );
+            return false;</span>
+        case '"':
+<span style = "background-color:#fdd">            startNewMode( QuotedName );
+            return false;</span>
+        default:
+<span style = "background-color:#fdd">            startNewMode( Name );
+            return false;</span>
+        }
+<span style = "background-color:#fdd">    }
+    void TestSpecParser::processNameChar( char c ) {
+        if( c == '[' ) {
+            if( m_substring == "exclude:" )
+                m_exclusion = true;</span>
+            else
+<span style = "background-color:#fdd">                endMode();
+            startNewMode( Tag );</span>
+        }
+<span style = "background-color:#fdd">    }
+    bool TestSpecParser::processOtherChar( char c ) {
+        if( !isControlChar( c ) )
+            return false;
+        m_substring += c;
+        endMode();
+        return true;
+    }
+    void TestSpecParser::startNewMode( Mode mode ) {
+        m_mode = mode;
+    }
+    void TestSpecParser::endMode() {
+        switch( m_mode ) {</span>
+        case Name:
+        case QuotedName:
+<span style = "background-color:#fdd">            return addNamePattern();</span>
+        case Tag:
+<span style = "background-color:#fdd">            return addTagPattern();</span>
+        case EscapedName:
+<span style = "background-color:#fdd">            revertBackToLastMode();
+            return;</span>
+        case None:
+        default:
+<span style = "background-color:#fdd">            return startNewMode( None );</span>
+        }
+<span style = "background-color:#fdd">    }
+    void TestSpecParser::escape() {
+        saveLastMode();
+        m_mode = EscapedName;
+        m_escapeChars.push_back(m_realPatternPos);
+    }
+    bool TestSpecParser::isControlChar( char c ) const {
+        switch( m_mode ) {</span>
+            default:
+<span style = "background-color:#fdd">                return false;</span>
+            case None:
+<span style = "background-color:#fdd">                return c == '~';</span>
+            case Name:
+<span style = "background-color:#fdd">                return c == '[';</span>
+            case EscapedName:
+<span style = "background-color:#fdd">                return true;</span>
+            case QuotedName:
+<span style = "background-color:#fdd">                return c == '"';</span>
+            case Tag:
+<span style = "background-color:#fdd">                return c == '[' || c == ']';</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#dfd">    void TestSpecParser::addFilter() {
+        if( !m_currentFilter.m_required.empty() || !m_currentFilter.m_forbidden.empty() ) {</span>
+<span style = "background-color:#fdd">            m_testSpec.m_filters.push_back( CATCH_MOVE(m_currentFilter) );
+            m_currentFilter = TestSpec::Filter();</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#fdd">    void TestSpecParser::saveLastMode() {
+      lastMode = m_mode;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpecParser::revertBackToLastMode() {
+      m_mode = lastMode;
+    }</span>
+
+<span style = "background-color:#fdd">    bool TestSpecParser::separate() {
+      if( (m_mode==QuotedName) || (m_mode==Tag) ){</span>
+         //invalid argument, signal failure to previous scope.
+<span style = "background-color:#fdd">         m_mode = None;
+         m_pos = m_arg.size();
+         m_substring.clear();
+         m_patternName.clear();
+         m_realPatternPos = 0;
+         return false;</span>
+      }
+<span style = "background-color:#fdd">      endMode();
+      addFilter();
+      return true; //success
+    }</span>
+
+<span style = "background-color:#fdd">    std::string TestSpecParser::preprocessPattern() {
+        std::string token = m_patternName;
+        for (std::size_t i = 0; i &lt; m_escapeChars.size(); ++i)
+            token = token.substr(0, m_escapeChars[i] - i) + token.substr(m_escapeChars[i] - i + 1);
+        m_escapeChars.clear();
+        if (startsWith(token, "exclude:")) {
+            m_exclusion = true;
+            token = token.substr(8);</span>
+        }
+
+<span style = "background-color:#fdd">        m_patternName.clear();
+        m_realPatternPos = 0;</span>
+
+<span style = "background-color:#fdd">        return token;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpecParser::addNamePattern() {
+        auto token = preprocessPattern();</span>
+
+<span style = "background-color:#fdd">        if (!token.empty()) {
+            if (m_exclusion) {
+                m_currentFilter.m_forbidden.emplace_back(Detail::make_unique&lt;TestSpec::NamePattern&gt;(token, m_substring));
+            } else {
+                m_currentFilter.m_required.emplace_back(Detail::make_unique&lt;TestSpec::NamePattern&gt;(token, m_substring));</span>
+            }
+        }
+<span style = "background-color:#fdd">        m_substring.clear();
+        m_exclusion = false;
+        m_mode = None;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpecParser::addTagPattern() {
+        auto token = preprocessPattern();</span>
+
+<span style = "background-color:#fdd">        if (!token.empty()) {</span>
+            // If the tag pattern is the "hide and tag" shorthand (e.g. [.foo])
+            // we have to create a separate hide tag and shorten the real one
+<span style = "background-color:#fdd">            if (token.size() &gt; 1 &amp;&amp; token[0] == '.') {
+                token.erase(token.begin());
+                if (m_exclusion) {
+                    m_currentFilter.m_forbidden.emplace_back(Detail::make_unique&lt;TestSpec::TagPattern&gt;(".", m_substring));
+                } else {
+                    m_currentFilter.m_required.emplace_back(Detail::make_unique&lt;TestSpec::TagPattern&gt;(".", m_substring));</span>
+                }
+            }
+<span style = "background-color:#fdd">            if (m_exclusion) {
+                m_currentFilter.m_forbidden.emplace_back(Detail::make_unique&lt;TestSpec::TagPattern&gt;(token, m_substring));
+            } else {
+                m_currentFilter.m_required.emplace_back(Detail::make_unique&lt;TestSpec::TagPattern&gt;(token, m_substring));</span>
+            }
+        }
+<span style = "background-color:#fdd">        m_substring.clear();
+        m_exclusion = false;
+        m_mode = None;
+    }</span>
+
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

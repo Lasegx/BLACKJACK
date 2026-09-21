@@ -1,0 +1,308 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_console_colour.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#if defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wexit-time-destructors"
+#endif
+
+
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_errno_guard.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/internal/catch_istream.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_context.hpp&gt;
+#include &lt;catch2/internal/catch_platform.hpp&gt;
+#include &lt;catch2/internal/catch_debugger.hpp&gt;
+#include &lt;catch2/internal/catch_windows_h_proxy.hpp&gt;
+#include &lt;catch2/internal/catch_compiler_capabilities.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;ostream&gt;
+#include &lt;utility&gt;
+
+namespace Catch {
+
+<span style = "background-color:#dfd">    ColourImpl::~ColourImpl() = default;</span>
+
+<span style = "background-color:#dfd">    ColourImpl::ColourGuard ColourImpl::guardColour( Colour::Code colourCode ) {
+        return ColourGuard(colourCode, this );
+    }</span>
+
+<span style = "background-color:#dfd">    void ColourImpl::ColourGuard::engageImpl( std::ostream&amp; stream ) {
+        assert( &amp;stream == &amp;m_colourImpl-&gt;m_stream-&gt;stream() &amp;&amp;</span>
+                "Engaging colour guard for different stream than used by the "
+                "parent colour implementation" );
+        static_cast&lt;void&gt;( stream );
+
+<span style = "background-color:#dfd">        m_engaged = true;
+        m_colourImpl-&gt;use( m_code );
+    }</span>
+
+    ColourImpl::ColourGuard::ColourGuard( Colour::Code code,
+                                          ColourImpl const* colour ):
+<span style = "background-color:#dfd">        m_colourImpl( colour ), m_code( code ) {
+    }</span>
+    ColourImpl::ColourGuard::ColourGuard( ColourGuard&amp;&amp; rhs ) noexcept:
+<span style = "background-color:#fdd">        m_colourImpl( rhs.m_colourImpl ),
+        m_code( rhs.m_code ),
+        m_engaged( rhs.m_engaged ) {
+        rhs.m_engaged = false;
+    }</span>
+    ColourImpl::ColourGuard&amp;
+<span style = "background-color:#fdd">    ColourImpl::ColourGuard::operator=( ColourGuard&amp;&amp; rhs ) noexcept {</span>
+        using std::swap;
+<span style = "background-color:#fdd">        swap( m_colourImpl, rhs.m_colourImpl );
+        swap( m_code, rhs.m_code );
+        swap( m_engaged, rhs.m_engaged );</span>
+
+<span style = "background-color:#fdd">        return *this;
+    }</span>
+<span style = "background-color:#dfd">    ColourImpl::ColourGuard::~ColourGuard() {
+        if ( m_engaged ) {
+            m_colourImpl-&gt;use( Colour::None );</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    ColourImpl::ColourGuard&amp;
+<span style = "background-color:#fdd">    ColourImpl::ColourGuard::engage( std::ostream&amp; stream ) &amp; {
+        engageImpl( stream );
+        return *this;
+    }</span>
+
+    ColourImpl::ColourGuard&amp;&amp;
+<span style = "background-color:#fdd">    ColourImpl::ColourGuard::engage( std::ostream&amp; stream ) &amp;&amp; {
+        engageImpl( stream );
+        return CATCH_MOVE(*this);
+    }</span>
+
+    namespace {
+        //! A do-nothing implementation of colour, used as fallback for unknown
+        //! platforms, and when the user asks to deactivate all colours.
+        class NoColourImpl final : public ColourImpl {
+        public:
+<span style = "background-color:#fdd">            NoColourImpl( IStream* stream ): ColourImpl( stream ) {}</span>
+
+        private:
+<span style = "background-color:#fdd">            void use( Colour::Code ) const override {}</span>
+        };
+    } // namespace
+
+
+} // namespace Catch
+
+
+#if defined ( CATCH_CONFIG_COLOUR_WIN32 ) /////////////////////////////////////////
+
+namespace Catch {
+namespace {
+
+    class Win32ColourImpl final : public ColourImpl {
+    public:
+        Win32ColourImpl(IStream* stream):
+<span style = "background-color:#dfd">            ColourImpl(stream) {</span>
+            CONSOLE_SCREEN_BUFFER_INFO csbiInfo;
+<span style = "background-color:#dfd">            GetConsoleScreenBufferInfo( GetStdHandle( STD_OUTPUT_HANDLE ),</span>
+                                        &amp;csbiInfo );
+<span style = "background-color:#dfd">            originalForegroundAttributes = csbiInfo.wAttributes &amp; ~( BACKGROUND_GREEN | BACKGROUND_RED | BACKGROUND_BLUE | BACKGROUND_INTENSITY );
+            originalBackgroundAttributes = csbiInfo.wAttributes &amp; ~( FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY );
+        }</span>
+
+<span style = "background-color:#dfd">        static bool useImplementationForStream(IStream const&amp; stream) {</span>
+            // Win32 text colour APIs can only be used on console streams
+            // We cannot check that the output hasn't been redirected,
+            // so we just check that the original stream is console stream.
+<span style = "background-color:#dfd">            return stream.isConsole();
+        }</span>
+
+    private:
+<span style = "background-color:#dfd">        void use( Colour::Code _colourCode ) const override {
+            switch( _colourCode ) {
+                case Colour::None:      return setTextAttribute( originalForegroundAttributes );</span>
+<span style = "background-color:#fdd">                case Colour::White:     return setTextAttribute( FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE );
+                case Colour::Red:       return setTextAttribute( FOREGROUND_RED );
+                case Colour::Green:     return setTextAttribute( FOREGROUND_GREEN );
+                case Colour::Blue:      return setTextAttribute( FOREGROUND_BLUE );
+                case Colour::Cyan:      return setTextAttribute( FOREGROUND_BLUE | FOREGROUND_GREEN );
+                case Colour::Yellow:    return setTextAttribute( FOREGROUND_RED | FOREGROUND_GREEN );
+                case Colour::Grey:      return setTextAttribute( 0 );</span>
+
+<span style = "background-color:#dfd">                case Colour::LightGrey:     return setTextAttribute( FOREGROUND_INTENSITY );
+                case Colour::BrightRed:     return setTextAttribute( FOREGROUND_INTENSITY | FOREGROUND_RED );
+                case Colour::BrightGreen:   return setTextAttribute( FOREGROUND_INTENSITY | FOREGROUND_GREEN );</span>
+<span style = "background-color:#fdd">                case Colour::BrightWhite:   return setTextAttribute( FOREGROUND_INTENSITY | FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE );</span>
+<span style = "background-color:#dfd">                case Colour::BrightYellow:  return setTextAttribute( FOREGROUND_INTENSITY | FOREGROUND_RED | FOREGROUND_GREEN );</span>
+
+<span style = "background-color:#fdd">                case Colour::Bright: CATCH_INTERNAL_ERROR( "not a colour" );</span>
+
+                default:
+<span style = "background-color:#fdd">                    CATCH_ERROR( "Unknown colour requested" );</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+
+<span style = "background-color:#dfd">        void setTextAttribute( WORD _textAttribute ) const {
+            SetConsoleTextAttribute( GetStdHandle( STD_OUTPUT_HANDLE ),</span>
+                                     _textAttribute |
+                                         originalBackgroundAttributes );
+<span style = "background-color:#dfd">        }</span>
+        WORD originalForegroundAttributes;
+        WORD originalBackgroundAttributes;
+    };
+
+} // end anon namespace
+} // end namespace Catch
+
+#endif // Windows/ ANSI/ None
+
+
+#if defined( CATCH_PLATFORM_LINUX ) || defined( CATCH_PLATFORM_MAC )
+#    define CATCH_INTERNAL_HAS_ISATTY
+#    include &lt;unistd.h&gt;
+#endif
+
+namespace Catch {
+namespace {
+
+    class ANSIColourImpl final : public ColourImpl {
+    public:
+<span style = "background-color:#fdd">        ANSIColourImpl( IStream* stream ): ColourImpl( stream ) {}</span>
+
+<span style = "background-color:#fdd">        static bool useImplementationForStream(IStream const&amp; stream) {</span>
+            // This is kinda messy due to trying to support a bunch of
+            // different platforms at once.
+            // The basic idea is that if we are asked to do autodetection (as
+            // opposed to being told to use posixy colours outright), then we
+            // only want to use the colours if we are writing to console.
+            // However, console might be redirected, so we make an attempt at
+            // checking for that on platforms where we know how to do that.
+<span style = "background-color:#fdd">            bool useColour = stream.isConsole();</span>
+#if defined( CATCH_INTERNAL_HAS_ISATTY ) &amp;&amp; \
+    !( defined( __DJGPP__ ) &amp;&amp; defined( __STRICT_ANSI__ ) )
+            ErrnoGuard _; // for isatty
+            useColour = useColour &amp;&amp; isatty( STDOUT_FILENO );
+#    endif
+#    if defined( CATCH_PLATFORM_MAC ) || defined( CATCH_PLATFORM_IPHONE )
+            useColour = useColour &amp;&amp; !isDebuggerActive();
+#    endif
+
+<span style = "background-color:#fdd">            return useColour;
+        }</span>
+
+    private:
+<span style = "background-color:#fdd">        void use( Colour::Code _colourCode ) const override {</span>
+            auto setColour = [&amp;out =
+                                  m_stream-&gt;stream()]( char const* escapeCode ) {
+                // The escape sequence must be flushed to console, otherwise
+                // if stdin and stderr are intermixed, we'd get accidentally
+                // coloured output.
+<span style = "background-color:#fdd">                out &lt;&lt; '\033' &lt;&lt; escapeCode &lt;&lt; std::flush;
+            };
+            switch( _colourCode ) {</span>
+                case Colour::None:
+<span style = "background-color:#fdd">                case Colour::White:     return setColour( "[0m" );
+                case Colour::Red:       return setColour( "[0;31m" );
+                case Colour::Green:     return setColour( "[0;32m" );
+                case Colour::Blue:      return setColour( "[0;34m" );
+                case Colour::Cyan:      return setColour( "[0;36m" );
+                case Colour::Yellow:    return setColour( "[0;33m" );
+                case Colour::Grey:      return setColour( "[1;30m" );</span>
+
+<span style = "background-color:#fdd">                case Colour::LightGrey:     return setColour( "[0;37m" );
+                case Colour::BrightRed:     return setColour( "[1;31m" );
+                case Colour::BrightGreen:   return setColour( "[1;32m" );
+                case Colour::BrightWhite:   return setColour( "[1;37m" );
+                case Colour::BrightYellow:  return setColour( "[1;33m" );</span>
+
+<span style = "background-color:#fdd">                case Colour::Bright: CATCH_INTERNAL_ERROR( "not a colour" );
+                default: CATCH_INTERNAL_ERROR( "Unknown colour requested" );</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+    };
+
+} // end anon namespace
+} // end namespace Catch
+
+namespace Catch {
+
+    Detail::unique_ptr&lt;ColourImpl&gt; makeColourImpl( ColourMode implSelection,
+<span style = "background-color:#dfd">                                                   IStream* stream ) {</span>
+#if defined( CATCH_CONFIG_COLOUR_WIN32 )
+<span style = "background-color:#dfd">        if ( implSelection == ColourMode::Win32 ) {</span>
+<span style = "background-color:#fdd">            return Detail::make_unique&lt;Win32ColourImpl&gt;( stream );</span>
+        }
+#endif
+<span style = "background-color:#dfd">        if ( implSelection == ColourMode::ANSI ) {</span>
+<span style = "background-color:#fdd">            return Detail::make_unique&lt;ANSIColourImpl&gt;( stream );</span>
+        }
+<span style = "background-color:#dfd">        if ( implSelection == ColourMode::None ) {</span>
+<span style = "background-color:#fdd">            return Detail::make_unique&lt;NoColourImpl&gt;( stream );</span>
+        }
+
+<span style = "background-color:#dfd">        if ( implSelection == ColourMode::PlatformDefault) {</span>
+#if defined( CATCH_CONFIG_COLOUR_WIN32 )
+<span style = "background-color:#dfd">            if ( Win32ColourImpl::useImplementationForStream( *stream ) ) {
+                return Detail::make_unique&lt;Win32ColourImpl&gt;( stream );</span>
+            }
+#endif
+<span style = "background-color:#fdd">            if ( ANSIColourImpl::useImplementationForStream( *stream ) ) {
+                return Detail::make_unique&lt;ANSIColourImpl&gt;( stream );</span>
+            }
+<span style = "background-color:#fdd">            return Detail::make_unique&lt;NoColourImpl&gt;( stream );</span>
+        }
+
+<span style = "background-color:#fdd">        CATCH_ERROR( "Could not create colour impl for selection " &lt;&lt; static_cast&lt;int&gt;(implSelection) );</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#fdd">    bool isColourImplAvailable( ColourMode colourSelection ) {
+        switch ( colourSelection ) {</span>
+#if defined( CATCH_CONFIG_COLOUR_WIN32 )
+        case ColourMode::Win32:
+#endif
+        case ColourMode::ANSI:
+        case ColourMode::None:
+        case ColourMode::PlatformDefault:
+<span style = "background-color:#fdd">            return true;</span>
+        default:
+<span style = "background-color:#fdd">            return false;</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+
+} // end namespace Catch
+
+#if defined(__clang__)
+#    pragma clang diagnostic pop
+#endif
+</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

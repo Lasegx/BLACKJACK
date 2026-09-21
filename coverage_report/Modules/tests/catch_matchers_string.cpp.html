@@ -1,0 +1,140 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_matchers_string.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/matchers/catch_matchers_string.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;regex&gt;
+
+namespace Catch {
+namespace Matchers {
+
+    CasedString::CasedString( std::string const&amp; str, CaseSensitive caseSensitivity )
+<span style = "background-color:#fdd">    :   m_caseSensitivity( caseSensitivity ),
+        m_str( adjustString( str ) )
+    {}
+    std::string CasedString::adjustString( std::string const&amp; str ) const {
+        return m_caseSensitivity == CaseSensitive::No</span>
+               ? toLower( str )
+               : str;
+<span style = "background-color:#fdd">    }
+    StringRef CasedString::caseSensitivitySuffix() const {
+        return m_caseSensitivity == CaseSensitive::Yes</span>
+                   ? StringRef()
+                   : " (case insensitive)"_sr;
+<span style = "background-color:#fdd">    }</span>
+
+
+    StringMatcherBase::StringMatcherBase( StringRef operation, CasedString const&amp; comparator )
+<span style = "background-color:#fdd">    : m_comparator( comparator ),
+      m_operation( operation ) {
+    }</span>
+
+<span style = "background-color:#fdd">    std::string StringMatcherBase::describe() const {
+        std::string description;
+        description.reserve(5 + m_operation.size() + m_comparator.m_str.size() +</span>
+                                    m_comparator.caseSensitivitySuffix().size());
+<span style = "background-color:#fdd">        description += m_operation;
+        description += ": \"";
+        description += m_comparator.m_str;
+        description += '"';
+        description += m_comparator.caseSensitivitySuffix();
+        return description;
+    }</span>
+
+<span style = "background-color:#fdd">    StringEqualsMatcher::StringEqualsMatcher( CasedString const&amp; comparator ) : StringMatcherBase( "equals"_sr, comparator ) {}</span>
+
+<span style = "background-color:#fdd">    bool StringEqualsMatcher::match( std::string const&amp; source ) const {
+        return m_comparator.adjustString( source ) == m_comparator.m_str;
+    }</span>
+
+
+<span style = "background-color:#fdd">    StringContainsMatcher::StringContainsMatcher( CasedString const&amp; comparator ) : StringMatcherBase( "contains"_sr, comparator ) {}</span>
+
+<span style = "background-color:#fdd">    bool StringContainsMatcher::match( std::string const&amp; source ) const {
+        return contains( m_comparator.adjustString( source ), m_comparator.m_str );
+    }</span>
+
+
+<span style = "background-color:#fdd">    StartsWithMatcher::StartsWithMatcher( CasedString const&amp; comparator ) : StringMatcherBase( "starts with"_sr, comparator ) {}</span>
+
+<span style = "background-color:#fdd">    bool StartsWithMatcher::match( std::string const&amp; source ) const {
+        return startsWith( m_comparator.adjustString( source ), m_comparator.m_str );
+    }</span>
+
+
+<span style = "background-color:#fdd">    EndsWithMatcher::EndsWithMatcher( CasedString const&amp; comparator ) : StringMatcherBase( "ends with"_sr, comparator ) {}</span>
+
+<span style = "background-color:#fdd">    bool EndsWithMatcher::match( std::string const&amp; source ) const {
+        return endsWith( m_comparator.adjustString( source ), m_comparator.m_str );
+    }</span>
+
+
+
+<span style = "background-color:#fdd">    RegexMatcher::RegexMatcher(std::string regex, CaseSensitive caseSensitivity): m_regex(CATCH_MOVE(regex)), m_caseSensitivity(caseSensitivity) {}</span>
+
+<span style = "background-color:#fdd">    bool RegexMatcher::match(std::string const&amp; matchee) const {
+        auto flags = std::regex::ECMAScript; // ECMAScript is the default syntax option anyway
+        if (m_caseSensitivity == CaseSensitive::No) {
+            flags |= std::regex::icase;</span>
+        }
+<span style = "background-color:#fdd">        auto reg = std::regex(m_regex, flags);
+        return std::regex_match(matchee, reg);
+    }</span>
+
+<span style = "background-color:#fdd">    std::string RegexMatcher::describe() const {
+        return "matches " + ::Catch::Detail::stringify(m_regex) + ((m_caseSensitivity == CaseSensitive::Yes)? " case sensitively" : " case insensitively");
+    }</span>
+
+
+<span style = "background-color:#fdd">    StringEqualsMatcher Equals( std::string const&amp; str, CaseSensitive caseSensitivity ) {
+        return StringEqualsMatcher( CasedString( str, caseSensitivity) );
+    }
+    StringContainsMatcher ContainsSubstring( std::string const&amp; str, CaseSensitive caseSensitivity ) {
+        return StringContainsMatcher( CasedString( str, caseSensitivity) );
+    }
+    EndsWithMatcher EndsWith( std::string const&amp; str, CaseSensitive caseSensitivity ) {
+        return EndsWithMatcher( CasedString( str, caseSensitivity) );
+    }
+    StartsWithMatcher StartsWith( std::string const&amp; str, CaseSensitive caseSensitivity ) {
+        return StartsWithMatcher( CasedString( str, caseSensitivity) );
+    }</span>
+
+<span style = "background-color:#fdd">    RegexMatcher Matches(std::string const&amp; regex, CaseSensitive caseSensitivity) {
+        return RegexMatcher(regex, caseSensitivity);
+    }</span>
+
+} // namespace Matchers
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

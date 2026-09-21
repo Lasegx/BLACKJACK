@@ -1,0 +1,359 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_xml.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_xml.hpp&gt;
+
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_list.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/catch_version.hpp&gt;
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4061) // Not all labels are EXPLICITLY handled in switch
+                              // Note that 4062 (not all labels are handled
+                              // and default is missing) is enabled
+#endif
+
+namespace Catch {
+    XmlReporter::XmlReporter( ReporterConfig&amp;&amp; _config )
+<span style = "background-color:#fdd">    :   StreamingReporterBase( CATCH_MOVE(_config) ),
+        m_xml(m_stream)
+    {
+        m_preferences.shouldRedirectStdOut = true;
+        m_preferences.shouldReportAllAssertions = true;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlReporter::~XmlReporter() = default;</span>
+
+<span style = "background-color:#fdd">    std::string XmlReporter::getDescription() {
+        return "Reports test results as an XML document";
+    }</span>
+
+<span style = "background-color:#fdd">    std::string XmlReporter::getStylesheetRef() const {
+        return std::string();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::writeSourceInfo( SourceLineInfo const&amp; sourceInfo ) {
+        m_xml</span>
+            .writeAttribute( "filename"_sr, sourceInfo.file )
+            .writeAttribute( "line"_sr, sourceInfo.line );
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::testRunStarting( TestRunInfo const&amp; testInfo ) {
+        StreamingReporterBase::testRunStarting( testInfo );
+        std::string stylesheetRef = getStylesheetRef();
+        if( !stylesheetRef.empty() )
+            m_xml.writeStylesheetRef( stylesheetRef );
+        m_xml.startElement("Catch2TestRun")</span>
+             .writeAttribute("name"_sr, m_config-&gt;name())
+             .writeAttribute("rng-seed"_sr, m_config-&gt;rngSeed())
+             .writeAttribute("xml-format-version"_sr, 3)
+             .writeAttribute("catch2-version"_sr, libraryVersion());
+<span style = "background-color:#fdd">        if ( m_config-&gt;testSpec().hasFilters() ) {
+            m_xml.writeAttribute( "filters"_sr, m_config-&gt;testSpec() );</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::testCaseStarting( TestCaseInfo const&amp; testInfo ) {
+        StreamingReporterBase::testCaseStarting(testInfo);
+        m_xml.startElement( "TestCase" )</span>
+            .writeAttribute( "name"_sr, trim( StringRef(testInfo.name) ) )
+            .writeAttribute( "tags"_sr, testInfo.tagsAsString() );
+
+<span style = "background-color:#fdd">        writeSourceInfo( testInfo.lineInfo );</span>
+
+<span style = "background-color:#fdd">        if ( m_config-&gt;showDurations() == ShowDurations::Always )
+            m_testCaseTimer.start();
+        m_xml.ensureTagClosed();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::sectionStarting( SectionInfo const&amp; sectionInfo ) {
+        StreamingReporterBase::sectionStarting( sectionInfo );
+        if( m_sectionDepth++ &gt; 0 ) {
+            m_xml.startElement( "Section" )</span>
+                .writeAttribute( "name"_sr, trim( StringRef(sectionInfo.name) ) );
+<span style = "background-color:#fdd">            writeSourceInfo( sectionInfo.lineInfo );
+            m_xml.ensureTagClosed();</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::assertionStarting( AssertionInfo const&amp; ) { }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::assertionEnded( AssertionStats const&amp; assertionStats ) {</span>
+
+<span style = "background-color:#fdd">        AssertionResult const&amp; result = assertionStats.assertionResult;</span>
+
+<span style = "background-color:#fdd">        bool includeResults = m_config-&gt;includeSuccessfulResults() || !result.isOk();</span>
+
+<span style = "background-color:#fdd">        if( includeResults || result.getResultType() == ResultWas::Warning ) {</span>
+            // Print any info messages in &lt;Info&gt; tags.
+<span style = "background-color:#fdd">            for( auto const&amp; msg : assertionStats.infoMessages ) {
+                if( msg.type == ResultWas::Info &amp;&amp; includeResults ) {
+                    auto t = m_xml.scopedElement( "Info" );
+                    writeSourceInfo( msg.lineInfo );
+                    t.writeText( msg.message );
+                } else if ( msg.type == ResultWas::Warning ) {
+                    auto t = m_xml.scopedElement( "Warning" );
+                    writeSourceInfo( msg.lineInfo );
+                    t.writeText( msg.message );
+                }
+            }</span>
+        }
+
+        // Drop out if result was successful but we're not printing them.
+<span style = "background-color:#fdd">        if ( !includeResults &amp;&amp; result.getResultType() != ResultWas::Warning &amp;&amp;</span>
+             result.getResultType() != ResultWas::ExplicitSkip ) {
+<span style = "background-color:#fdd">            return;</span>
+        }
+
+        // Print the expression if there is one.
+<span style = "background-color:#fdd">        if( result.hasExpression() ) {
+            m_xml.startElement( "Expression" )</span>
+                .writeAttribute( "success"_sr, result.succeeded() )
+                .writeAttribute( "type"_sr, result.getTestMacroName() );
+
+<span style = "background-color:#fdd">            writeSourceInfo( result.getSourceInfo() );</span>
+
+<span style = "background-color:#fdd">            m_xml.scopedElement( "Original" )</span>
+                .writeText( result.getExpression() );
+<span style = "background-color:#fdd">            m_xml.scopedElement( "Expanded" )</span>
+                .writeText( result.getExpandedExpression() );
+        }
+
+        // And... Print a result applicable to each result type.
+<span style = "background-color:#fdd">        switch( result.getResultType() ) {</span>
+            case ResultWas::ThrewException:
+<span style = "background-color:#fdd">                m_xml.startElement( "Exception" );
+                writeSourceInfo( result.getSourceInfo() );
+                m_xml.writeText( result.getMessage() );
+                m_xml.endElement();
+                break;</span>
+            case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">                m_xml.startElement( "FatalErrorCondition" );
+                writeSourceInfo( result.getSourceInfo() );
+                m_xml.writeText( result.getMessage() );
+                m_xml.endElement();
+                break;</span>
+            case ResultWas::Info:
+<span style = "background-color:#fdd">                m_xml.scopedElement( "Info" )</span>
+                     .writeText( result.getMessage() );
+<span style = "background-color:#fdd">                break;</span>
+            case ResultWas::Warning:
+                // Warning will already have been written
+<span style = "background-color:#fdd">                break;</span>
+            case ResultWas::ExplicitFailure:
+<span style = "background-color:#fdd">                m_xml.startElement( "Failure" );
+                writeSourceInfo( result.getSourceInfo() );
+                m_xml.writeText( result.getMessage() );
+                m_xml.endElement();
+                break;</span>
+            case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">                m_xml.startElement( "Skip" );
+                writeSourceInfo( result.getSourceInfo() );
+                m_xml.writeText( result.getMessage() );
+                m_xml.endElement();</span>
+                break;
+            default:
+                break;
+        }
+
+<span style = "background-color:#fdd">        if( result.hasExpression() )
+            m_xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::sectionEnded( SectionStats const&amp; sectionStats ) {
+        StreamingReporterBase::sectionEnded( sectionStats );
+        if ( --m_sectionDepth &gt; 0 ) {</span>
+            {
+<span style = "background-color:#fdd">                XmlWriter::ScopedElement e = m_xml.scopedElement( "OverallResults" );
+                e.writeAttribute( "successes"_sr, sectionStats.assertions.passed );
+                e.writeAttribute( "failures"_sr, sectionStats.assertions.failed );
+                e.writeAttribute( "expectedFailures"_sr, sectionStats.assertions.failedButOk );
+                e.writeAttribute( "skipped"_sr, sectionStats.assertions.skipped &gt; 0 );</span>
+
+<span style = "background-color:#fdd">                if ( m_config-&gt;showDurations() == ShowDurations::Always )
+                    e.writeAttribute( "durationInSeconds"_sr, sectionStats.durationInSeconds );
+            }</span>
+            // Ends assertion tag
+<span style = "background-color:#fdd">            m_xml.endElement();</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::testCaseEnded( TestCaseStats const&amp; testCaseStats ) {
+        StreamingReporterBase::testCaseEnded( testCaseStats );
+        XmlWriter::ScopedElement e = m_xml.scopedElement( "OverallResult" );
+        e.writeAttribute( "success"_sr, testCaseStats.totals.assertions.allOk() );
+        e.writeAttribute( "skips"_sr, testCaseStats.totals.assertions.skipped );</span>
+
+<span style = "background-color:#fdd">        if ( m_config-&gt;showDurations() == ShowDurations::Always )
+            e.writeAttribute( "durationInSeconds"_sr, m_testCaseTimer.getElapsedSeconds() );
+        if( !testCaseStats.stdOut.empty() )
+            m_xml.scopedElement( "StdOut" ).writeText( trim( StringRef(testCaseStats.stdOut) ), XmlFormatting::Newline );
+        if( !testCaseStats.stdErr.empty() )
+            m_xml.scopedElement( "StdErr" ).writeText( trim( StringRef(testCaseStats.stdErr) ), XmlFormatting::Newline );</span>
+
+<span style = "background-color:#fdd">        m_xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::testRunEnded( TestRunStats const&amp; testRunStats ) {
+        StreamingReporterBase::testRunEnded( testRunStats );
+        m_xml.scopedElement( "OverallResults" )</span>
+            .writeAttribute( "successes"_sr, testRunStats.totals.assertions.passed )
+            .writeAttribute( "failures"_sr, testRunStats.totals.assertions.failed )
+            .writeAttribute( "expectedFailures"_sr, testRunStats.totals.assertions.failedButOk )
+            .writeAttribute( "skips"_sr, testRunStats.totals.assertions.skipped );
+<span style = "background-color:#fdd">        m_xml.scopedElement( "OverallResultsCases")</span>
+            .writeAttribute( "successes"_sr, testRunStats.totals.testCases.passed )
+            .writeAttribute( "failures"_sr, testRunStats.totals.testCases.failed )
+            .writeAttribute( "expectedFailures"_sr, testRunStats.totals.testCases.failedButOk )
+            .writeAttribute( "skips"_sr, testRunStats.totals.testCases.skipped );
+<span style = "background-color:#fdd">        m_xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::benchmarkPreparing( StringRef name ) {
+        m_xml.startElement("BenchmarkResults")</span>
+             .writeAttribute("name"_sr, name);
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::benchmarkStarting(BenchmarkInfo const &amp;info) {
+        m_xml.writeAttribute("samples"_sr, info.samples)</span>
+            .writeAttribute("resamples"_sr, info.resamples)
+            .writeAttribute("iterations"_sr, info.iterations)
+            .writeAttribute("clockResolution"_sr, info.clockResolution)
+            .writeAttribute("estimatedDuration"_sr, info.estimatedDuration)
+            .writeComment("All values in nano seconds"_sr);
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::benchmarkEnded(BenchmarkStats&lt;&gt; const&amp; benchmarkStats) {
+        m_xml.scopedElement("mean")</span>
+            .writeAttribute("value"_sr, benchmarkStats.mean.point.count())
+            .writeAttribute("lowerBound"_sr, benchmarkStats.mean.lower_bound.count())
+            .writeAttribute("upperBound"_sr, benchmarkStats.mean.upper_bound.count())
+            .writeAttribute("ci"_sr, benchmarkStats.mean.confidence_interval);
+<span style = "background-color:#fdd">        m_xml.scopedElement("standardDeviation")</span>
+            .writeAttribute("value"_sr, benchmarkStats.standardDeviation.point.count())
+            .writeAttribute("lowerBound"_sr, benchmarkStats.standardDeviation.lower_bound.count())
+            .writeAttribute("upperBound"_sr, benchmarkStats.standardDeviation.upper_bound.count())
+            .writeAttribute("ci"_sr, benchmarkStats.standardDeviation.confidence_interval);
+<span style = "background-color:#fdd">        m_xml.scopedElement("outliers")</span>
+            .writeAttribute("variance"_sr, benchmarkStats.outlierVariance)
+            .writeAttribute("lowMild"_sr, benchmarkStats.outliers.low_mild)
+            .writeAttribute("lowSevere"_sr, benchmarkStats.outliers.low_severe)
+            .writeAttribute("highMild"_sr, benchmarkStats.outliers.high_mild)
+            .writeAttribute("highSevere"_sr, benchmarkStats.outliers.high_severe);
+<span style = "background-color:#fdd">        m_xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::benchmarkFailed(StringRef error) {
+        m_xml.scopedElement("failed").</span>
+            writeAttribute("message"_sr, error);
+<span style = "background-color:#fdd">        m_xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::listReporters(std::vector&lt;ReporterDescription&gt; const&amp; descriptions) {
+        auto outerTag = m_xml.scopedElement("AvailableReporters");
+        for (auto const&amp; reporter : descriptions) {
+            auto inner = m_xml.scopedElement("Reporter");
+            m_xml.startElement("Name", XmlFormatting::Indent)</span>
+                 .writeText(reporter.name, XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            m_xml.startElement("Description", XmlFormatting::Indent)</span>
+                 .writeText(reporter.description, XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::listListeners(std::vector&lt;ListenerDescription&gt; const&amp; descriptions) {
+        auto outerTag = m_xml.scopedElement( "RegisteredListeners" );
+        for ( auto const&amp; listener : descriptions ) {
+            auto inner = m_xml.scopedElement( "Listener" );
+            m_xml.startElement( "Name", XmlFormatting::Indent )</span>
+                .writeText( listener.name, XmlFormatting::None )
+                .endElement( XmlFormatting::Newline );
+<span style = "background-color:#fdd">            m_xml.startElement( "Description", XmlFormatting::Indent )</span>
+                .writeText( listener.description, XmlFormatting::None )
+                .endElement( XmlFormatting::Newline );
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::listTests(std::vector&lt;TestCaseHandle&gt; const&amp; tests) {
+        auto outerTag = m_xml.scopedElement("MatchingTests");
+        for (auto const&amp; test : tests) {
+            auto innerTag = m_xml.scopedElement("TestCase");
+            auto const&amp; testInfo = test.getTestCaseInfo();
+            m_xml.startElement("Name", XmlFormatting::Indent)</span>
+                 .writeText(testInfo.name, XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            m_xml.startElement("ClassName", XmlFormatting::Indent)</span>
+                 .writeText(testInfo.className, XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            m_xml.startElement("Tags", XmlFormatting::Indent)</span>
+                 .writeText(testInfo.tagsAsString(), XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+
+<span style = "background-color:#fdd">            auto sourceTag = m_xml.scopedElement("SourceInfo");
+            m_xml.startElement("File", XmlFormatting::Indent)</span>
+                 .writeText(testInfo.lineInfo.file, XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            m_xml.startElement("Line", XmlFormatting::Indent)</span>
+                 .writeText(std::to_string(testInfo.lineInfo.line), XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlReporter::listTags(std::vector&lt;TagInfo&gt; const&amp; tags) {
+        auto outerTag = m_xml.scopedElement("TagsFromMatchingTests");
+        for (auto const&amp; tag : tags) {
+            auto innerTag = m_xml.scopedElement("Tag");
+            m_xml.startElement("Count", XmlFormatting::Indent)</span>
+                 .writeText(std::to_string(tag.count), XmlFormatting::None)
+                 .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            auto aliasTag = m_xml.scopedElement("Aliases");
+            for (auto const&amp; alias : tag.spellings) {
+                m_xml.startElement("Alias", XmlFormatting::Indent)</span>
+                     .writeText(alias, XmlFormatting::None)
+                     .endElement(XmlFormatting::Newline);
+<span style = "background-color:#fdd">            }
+        }
+    }</span>
+
+} // end namespace Catch
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,726 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_run_context.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_run_context.hpp&gt;
+
+#include &lt;catch2/catch_user_config.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_generatortracker.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_reporter.hpp&gt;
+#include &lt;catch2/internal/catch_compiler_capabilities.hpp&gt;
+#include &lt;catch2/internal/catch_context.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_fatal_condition_handler.hpp&gt;
+#include &lt;catch2/internal/catch_random_number_generator.hpp&gt;
+#include &lt;catch2/catch_timer.hpp&gt;
+#include &lt;catch2/internal/catch_output_redirect.hpp&gt;
+#include &lt;catch2/internal/catch_assertion_handler.hpp&gt;
+#include &lt;catch2/internal/catch_test_failure_exception.hpp&gt;
+#include &lt;catch2/internal/catch_result_type.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;algorithm&gt;
+
+namespace Catch {
+
+    namespace Generators {
+        namespace {
+            struct GeneratorTracker final : TestCaseTracking::TrackerBase,
+                                      IGeneratorTracker {
+                GeneratorBasePtr m_generator;
+
+                GeneratorTracker(
+                    TestCaseTracking::NameAndLocation&amp;&amp; nameAndLocation,
+                    TrackerContext&amp; ctx,
+                    ITracker* parent ):
+<span style = "background-color:#fdd">                    TrackerBase( CATCH_MOVE( nameAndLocation ), ctx, parent ) {}</span>
+
+                static GeneratorTracker*
+                acquire( TrackerContext&amp; ctx,
+                         TestCaseTracking::NameAndLocationRef const&amp;
+<span style = "background-color:#fdd">                             nameAndLocation ) {</span>
+                    GeneratorTracker* tracker;
+
+<span style = "background-color:#fdd">                    ITracker&amp; currentTracker = ctx.currentTracker();</span>
+                    // Under specific circumstances, the generator we want
+                    // to acquire is also the current tracker. If this is
+                    // the case, we have to avoid looking through current
+                    // tracker's children, and instead return the current
+                    // tracker.
+                    // A case where this check is important is e.g.
+                    //     for (int i = 0; i &lt; 5; ++i) {
+                    //         int n = GENERATE(1, 2);
+                    //     }
+                    //
+                    // without it, the code above creates 5 nested generators.
+<span style = "background-color:#fdd">                    if ( currentTracker.nameAndLocation() == nameAndLocation ) {
+                        auto thisTracker = currentTracker.parent()-&gt;findChild(</span>
+                            nameAndLocation );
+<span style = "background-color:#fdd">                        assert( thisTracker );
+                        assert( thisTracker-&gt;isGeneratorTracker() );
+                        tracker = static_cast&lt;GeneratorTracker*&gt;( thisTracker );
+                    } else if ( ITracker* childTracker =</span>
+                                    currentTracker.findChild(
+                                        nameAndLocation ) ) {
+<span style = "background-color:#fdd">                        assert( childTracker );
+                        assert( childTracker-&gt;isGeneratorTracker() );
+                        tracker =</span>
+                            static_cast&lt;GeneratorTracker*&gt;( childTracker );
+<span style = "background-color:#fdd">                    } else {
+                        return nullptr;</span>
+                    }
+
+<span style = "background-color:#fdd">                    if ( !tracker-&gt;isComplete() ) { tracker-&gt;open(); }</span>
+
+<span style = "background-color:#fdd">                    return tracker;
+                }</span>
+
+                // TrackerBase interface
+<span style = "background-color:#fdd">                bool isGeneratorTracker() const override { return true; }
+                auto hasGenerator() const -&gt; bool override {
+                    return !!m_generator;
+                }
+                void close() override {
+                    TrackerBase::close();</span>
+                    // If a generator has a child (it is followed by a section)
+                    // and none of its children have started, then we must wait
+                    // until later to start consuming its values.
+                    // This catches cases where `GENERATE` is placed between two
+                    // `SECTION`s.
+                    // **The check for m_children.empty cannot be removed**.
+                    // doing so would break `GENERATE` _not_ followed by
+                    // `SECTION`s.
+<span style = "background-color:#fdd">                    const bool should_wait_for_child = [&amp;]() {</span>
+                        // No children -&gt; nobody to wait for
+<span style = "background-color:#fdd">                        if ( m_children.empty() ) { return false; }</span>
+                        // If at least one child started executing, don't wait
+                        if ( std::find_if(
+                                 m_children.begin(),
+                                 m_children.end(),
+                                 []( TestCaseTracking::ITrackerPtr const&amp;
+                                         tracker ) {
+<span style = "background-color:#fdd">                                     return tracker-&gt;hasStarted();
+                                 } ) != m_children.end() ) {
+                            return false;</span>
+                        }
+
+                        // No children have started. We need to check if they
+                        // _can_ start, and thus we should wait for them, or
+                        // they cannot start (due to filters), and we shouldn't
+                        // wait for them
+<span style = "background-color:#fdd">                        ITracker* parent = m_parent;</span>
+                        // This is safe: there is always at least one section
+                        // tracker in a test case tracking tree
+<span style = "background-color:#fdd">                        while ( !parent-&gt;isSectionTracker() ) {
+                            parent = parent-&gt;parent();
+                        }
+                        assert( parent &amp;&amp;</span>
+                                "Missing root (test case) level section" );
+
+<span style = "background-color:#fdd">                        auto const&amp; parentSection =</span>
+                            static_cast&lt;SectionTracker const&amp;&gt;( *parent );
+<span style = "background-color:#fdd">                        auto const&amp; filters = parentSection.getFilters();</span>
+                        // No filters -&gt; no restrictions on running sections
+<span style = "background-color:#fdd">                        if ( filters.empty() ) { return true; }</span>
+
+<span style = "background-color:#fdd">                        for ( auto const&amp; child : m_children ) {
+                            if ( child-&gt;isSectionTracker() &amp;&amp;</span>
+                                 std::find( filters.begin(),
+                                            filters.end(),
+                                            static_cast&lt;SectionTracker const&amp;&gt;(
+                                                *child )
+                                                .trimmedName() ) !=
+                                     filters.end() ) {
+<span style = "background-color:#fdd">                                return true;</span>
+                            }
+<span style = "background-color:#fdd">                        }
+                        return false;
+                    }();</span>
+
+                    // This check is a bit tricky, because m_generator-&gt;next()
+                    // has a side-effect, where it consumes generator's current
+                    // value, but we do not want to invoke the side-effect if
+                    // this generator is still waiting for any child to start.
+<span style = "background-color:#fdd">                    assert( m_generator &amp;&amp; "Tracker without generator" );
+                    if ( should_wait_for_child ||</span>
+                         ( m_runState == CompletedSuccessfully &amp;&amp;
+                           m_generator-&gt;countedNext() ) ) {
+<span style = "background-color:#fdd">                        m_children.clear();
+                        m_runState = Executing;</span>
+                    }
+<span style = "background-color:#fdd">                }</span>
+
+                // IGeneratorTracker interface
+<span style = "background-color:#fdd">                auto getGenerator() const -&gt; GeneratorBasePtr const&amp; override {
+                    return m_generator;
+                }
+                void setGenerator( GeneratorBasePtr&amp;&amp; generator ) override {
+                    m_generator = CATCH_MOVE( generator );
+                }</span>
+            };
+        } // namespace
+    }
+
+    RunContext::RunContext(IConfig const* _config, IEventListenerPtr&amp;&amp; reporter)
+<span style = "background-color:#dfd">    :   m_runInfo(_config-&gt;name()),
+        m_config(_config),
+        m_reporter(CATCH_MOVE(reporter)),
+        m_lastAssertionInfo{ StringRef(), SourceLineInfo("",0), StringRef(), ResultDisposition::Normal },
+        m_includeSuccessfulResults( m_config-&gt;includeSuccessfulResults() || m_reporter-&gt;getPreferences().shouldReportAllAssertions )
+    {
+        getCurrentMutableContext().setResultCapture( this );
+        m_reporter-&gt;testRunStarting(m_runInfo);
+    }</span>
+
+<span style = "background-color:#dfd">    RunContext::~RunContext() {
+        m_reporter-&gt;testRunEnded(TestRunStats(m_runInfo, m_totals, aborting()));
+    }</span>
+
+<span style = "background-color:#dfd">    Totals RunContext::runTest(TestCaseHandle const&amp; testCase) {
+        const Totals prevTotals = m_totals;</span>
+
+<span style = "background-color:#dfd">        auto const&amp; testInfo = testCase.getTestCaseInfo();
+        m_reporter-&gt;testCaseStarting(testInfo);
+        m_activeTestCase = &amp;testCase;</span>
+
+
+<span style = "background-color:#dfd">        ITracker&amp; rootTracker = m_trackerContext.startRun();
+        assert(rootTracker.isSectionTracker());
+        static_cast&lt;SectionTracker&amp;&gt;(rootTracker).addInitialFilters(m_config-&gt;getSectionsToRun());</span>
+
+        // We intentionally only seed the internal RNG once per test case,
+        // before it is first invoked. The reason for that is a complex
+        // interplay of generator/section implementation details and the
+        // Random*Generator types.
+        //
+        // The issue boils down to us needing to seed the Random*Generators
+        // with different seed each, so that they return different sequences
+        // of random numbers. We do this by giving them a number from the
+        // shared RNG instance as their seed.
+        //
+        // However, this runs into an issue if the reseeding happens each
+        // time the test case is entered (as opposed to first time only),
+        // because multiple generators could get the same seed, e.g. in
+        // ```cpp
+        // TEST_CASE() {
+        //     auto i = GENERATE(take(10, random(0, 100));
+        //     SECTION("A") {
+        //         auto j = GENERATE(take(10, random(0, 100));
+        //     }
+        //     SECTION("B") {
+        //         auto k = GENERATE(take(10, random(0, 100));
+        //     }
+        // }
+        // ```
+        // `i` and `j` would properly return values from different sequences,
+        // but `i` and `k` would return the same sequence, because their seed
+        // would be the same.
+        // (The reason their seeds would be the same is that the generator
+        //  for k would be initialized when the test case is entered the second
+        //  time, after the shared RNG instance was reset to the same value
+        //  it had when the generator for i was initialized.)
+<span style = "background-color:#dfd">        seedRng( *m_config );</span>
+
+<span style = "background-color:#dfd">        uint64_t testRuns = 0;
+        std::string redirectedCout;
+        std::string redirectedCerr;</span>
+        do {
+<span style = "background-color:#dfd">            m_trackerContext.startCycle();
+            m_testCaseTracker = &amp;SectionTracker::acquire(m_trackerContext, TestCaseTracking::NameAndLocationRef(testInfo.name, testInfo.lineInfo));</span>
+
+<span style = "background-color:#dfd">            m_reporter-&gt;testCasePartialStarting(testInfo, testRuns);</span>
+
+<span style = "background-color:#dfd">            const auto beforeRunTotals = m_totals;
+            std::string oneRunCout, oneRunCerr;
+            runCurrentTest(oneRunCout, oneRunCerr);
+            redirectedCout += oneRunCout;
+            redirectedCerr += oneRunCerr;</span>
+
+<span style = "background-color:#dfd">            const auto singleRunTotals = m_totals.delta(beforeRunTotals);
+            auto statsForOneRun = TestCaseStats(testInfo, singleRunTotals, CATCH_MOVE(oneRunCout), CATCH_MOVE(oneRunCerr), aborting());</span>
+
+<span style = "background-color:#dfd">            m_reporter-&gt;testCasePartialEnded(statsForOneRun, testRuns);
+            ++testRuns;
+        } while (!m_testCaseTracker-&gt;isSuccessfullyCompleted() &amp;&amp; !aborting());</span>
+
+<span style = "background-color:#dfd">        Totals deltaTotals = m_totals.delta(prevTotals);
+        if (testInfo.expectedToFail() &amp;&amp; deltaTotals.testCases.passed &gt; 0) {</span>
+<span style = "background-color:#fdd">            deltaTotals.assertions.failed++;
+            deltaTotals.testCases.passed--;
+            deltaTotals.testCases.failed++;</span>
+        }
+<span style = "background-color:#dfd">        m_totals.testCases += deltaTotals.testCases;
+        m_reporter-&gt;testCaseEnded(TestCaseStats(testInfo,</span>
+                                  deltaTotals,
+                                  CATCH_MOVE(redirectedCout),
+                                  CATCH_MOVE(redirectedCerr),
+                                  aborting()));
+
+<span style = "background-color:#dfd">        m_activeTestCase = nullptr;
+        m_testCaseTracker = nullptr;</span>
+
+<span style = "background-color:#dfd">        return deltaTotals;
+    }</span>
+
+
+<span style = "background-color:#dfd">    void RunContext::assertionEnded(AssertionResult&amp;&amp; result) {
+        if (result.getResultType() == ResultWas::Ok) {
+            m_totals.assertions.passed++;
+            m_lastAssertionPassed = true;</span>
+<span style = "background-color:#fdd">        } else if (result.getResultType() == ResultWas::ExplicitSkip) {
+            m_totals.assertions.skipped++;
+            m_lastAssertionPassed = true;
+        } else if (!result.succeeded()) {
+            m_lastAssertionPassed = false;
+            if (result.isOk()) {
+            }
+            else if( m_activeTestCase-&gt;getTestCaseInfo().okToFail() )
+                m_totals.assertions.failedButOk++;</span>
+            else
+<span style = "background-color:#fdd">                m_totals.assertions.failed++;
+        }</span>
+        else {
+<span style = "background-color:#fdd">            m_lastAssertionPassed = true;</span>
+        }
+
+<span style = "background-color:#dfd">        m_reporter-&gt;assertionEnded(AssertionStats(result, m_messages, m_totals));</span>
+
+<span style = "background-color:#dfd">        if ( result.getResultType() != ResultWas::Warning ) {
+            m_messageScopes.clear();</span>
+        }
+
+        // Reset working state. assertion info will be reset after
+        // populateReaction is run if it is needed
+<span style = "background-color:#dfd">        m_lastResult = CATCH_MOVE( result );
+    }
+    void RunContext::resetAssertionInfo() {
+        m_lastAssertionInfo.macroName = StringRef();
+        m_lastAssertionInfo.capturedExpression = "{Unknown expression after the reported line}"_sr;
+        m_lastAssertionInfo.resultDisposition = ResultDisposition::Normal;
+    }</span>
+
+<span style = "background-color:#dfd">    void RunContext::notifyAssertionStarted( AssertionInfo const&amp; info ) {
+        m_reporter-&gt;assertionStarting( info );
+    }</span>
+
+    bool RunContext::sectionStarted( StringRef sectionName,
+                                     SourceLineInfo const&amp; sectionLineInfo,
+<span style = "background-color:#fdd">                                     Counts&amp; assertions ) {
+        ITracker&amp; sectionTracker =</span>
+            SectionTracker::acquire( m_trackerContext,
+                                     TestCaseTracking::NameAndLocationRef(
+                                         sectionName, sectionLineInfo ) );
+
+<span style = "background-color:#fdd">        if (!sectionTracker.isOpen())
+            return false;
+        m_activeSections.push_back(&amp;sectionTracker);</span>
+
+<span style = "background-color:#fdd">        SectionInfo sectionInfo( sectionLineInfo, static_cast&lt;std::string&gt;(sectionName) );
+        m_lastAssertionInfo.lineInfo = sectionInfo.lineInfo;</span>
+
+<span style = "background-color:#fdd">        m_reporter-&gt;sectionStarting(sectionInfo);</span>
+
+<span style = "background-color:#fdd">        assertions = m_totals.assertions;</span>
+
+<span style = "background-color:#fdd">        return true;
+    }</span>
+    IGeneratorTracker*
+    RunContext::acquireGeneratorTracker( StringRef generatorName,
+<span style = "background-color:#fdd">                                         SourceLineInfo const&amp; lineInfo ) {</span>
+        using namespace Generators;
+<span style = "background-color:#fdd">        GeneratorTracker* tracker = GeneratorTracker::acquire(</span>
+            m_trackerContext,
+            TestCaseTracking::NameAndLocationRef(
+                 generatorName, lineInfo ) );
+<span style = "background-color:#fdd">        m_lastAssertionInfo.lineInfo = lineInfo;
+        return tracker;
+    }</span>
+
+    IGeneratorTracker* RunContext::createGeneratorTracker(
+        StringRef generatorName,
+        SourceLineInfo lineInfo,
+<span style = "background-color:#fdd">        Generators::GeneratorBasePtr&amp;&amp; generator ) {</span>
+
+<span style = "background-color:#fdd">        auto nameAndLoc = TestCaseTracking::NameAndLocation( static_cast&lt;std::string&gt;( generatorName ), lineInfo );
+        auto&amp; currentTracker = m_trackerContext.currentTracker();
+        assert(</span>
+            currentTracker.nameAndLocation() != nameAndLoc &amp;&amp;
+            "Trying to create tracker for a genreator that already has one" );
+
+<span style = "background-color:#fdd">        auto newTracker = Catch::Detail::make_unique&lt;Generators::GeneratorTracker&gt;(</span>
+            CATCH_MOVE(nameAndLoc), m_trackerContext, &amp;currentTracker );
+<span style = "background-color:#fdd">        auto ret = newTracker.get();
+        currentTracker.addChild( CATCH_MOVE( newTracker ) );</span>
+
+<span style = "background-color:#fdd">        ret-&gt;setGenerator( CATCH_MOVE( generator ) );
+        ret-&gt;open();
+        return ret;
+    }</span>
+
+<span style = "background-color:#dfd">    bool RunContext::testForMissingAssertions(Counts&amp; assertions) {
+        if (assertions.total() != 0)
+            return false;</span>
+<span style = "background-color:#fdd">        if (!m_config-&gt;warnAboutMissingAssertions())
+            return false;
+        if (m_trackerContext.currentTracker().hasChildren())
+            return false;
+        m_totals.assertions.failed++;
+        assertions.failed++;
+        return true;</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::sectionEnded(SectionEndInfo&amp;&amp; endInfo) {
+        Counts assertions = m_totals.assertions - endInfo.prevAssertions;
+        bool missingAssertions = testForMissingAssertions(assertions);</span>
+
+<span style = "background-color:#fdd">        if (!m_activeSections.empty()) {
+            m_activeSections.back()-&gt;close();
+            m_activeSections.pop_back();</span>
+        }
+
+<span style = "background-color:#fdd">        m_reporter-&gt;sectionEnded(SectionStats(CATCH_MOVE(endInfo.sectionInfo), assertions, endInfo.durationInSeconds, missingAssertions));
+        m_messages.clear();
+        m_messageScopes.clear();
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::sectionEndedEarly(SectionEndInfo&amp;&amp; endInfo) {
+        if ( m_unfinishedSections.empty() ) {
+            m_activeSections.back()-&gt;fail();
+        } else {
+            m_activeSections.back()-&gt;close();</span>
+        }
+<span style = "background-color:#fdd">        m_activeSections.pop_back();</span>
+
+<span style = "background-color:#fdd">        m_unfinishedSections.push_back(CATCH_MOVE(endInfo));
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::benchmarkPreparing( StringRef name ) {
+        m_reporter-&gt;benchmarkPreparing(name);
+    }
+    void RunContext::benchmarkStarting( BenchmarkInfo const&amp; info ) {
+        m_reporter-&gt;benchmarkStarting( info );
+    }
+    void RunContext::benchmarkEnded( BenchmarkStats&lt;&gt; const&amp; stats ) {
+        m_reporter-&gt;benchmarkEnded( stats );
+    }
+    void RunContext::benchmarkFailed( StringRef error ) {
+        m_reporter-&gt;benchmarkFailed( error );
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::pushScopedMessage(MessageInfo const &amp; message) {
+        m_messages.push_back(message);
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::popScopedMessage(MessageInfo const &amp; message) {
+        m_messages.erase(std::remove(m_messages.begin(), m_messages.end(), message), m_messages.end());
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::emplaceUnscopedMessage( MessageBuilder&amp;&amp; builder ) {
+        m_messageScopes.emplace_back( CATCH_MOVE(builder) );
+    }</span>
+
+<span style = "background-color:#fdd">    std::string RunContext::getCurrentTestName() const {
+        return m_activeTestCase</span>
+            ? m_activeTestCase-&gt;getTestCaseInfo().name
+            : std::string();
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    const AssertionResult * RunContext::getLastResult() const {
+        return &amp;(*m_lastResult);
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::exceptionEarlyReported() {
+        m_shouldReportUnexpected = false;
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::handleFatalErrorCondition( StringRef message ) {</span>
+        // First notify reporter that bad things happened
+<span style = "background-color:#fdd">        m_reporter-&gt;fatalErrorEncountered(message);</span>
+
+        // Don't rebuild the result -- the stringification itself can cause more fatal errors
+        // Instead, fake a result data.
+<span style = "background-color:#fdd">        AssertionResultData tempResult( ResultWas::FatalErrorCondition, { false } );
+        tempResult.message = static_cast&lt;std::string&gt;(message);
+        AssertionResult result(m_lastAssertionInfo, CATCH_MOVE(tempResult));</span>
+
+<span style = "background-color:#fdd">        assertionEnded(CATCH_MOVE(result) );
+        resetAssertionInfo();</span>
+
+<span style = "background-color:#fdd">        handleUnfinishedSections();</span>
+
+        // Recreate section for test case (as we will lose the one that was in scope)
+<span style = "background-color:#fdd">        auto const&amp; testCaseInfo = m_activeTestCase-&gt;getTestCaseInfo();
+        SectionInfo testCaseSection(testCaseInfo.lineInfo, testCaseInfo.name);</span>
+
+<span style = "background-color:#fdd">        Counts assertions;
+        assertions.failed = 1;
+        SectionStats testCaseSectionStats(CATCH_MOVE(testCaseSection), assertions, 0, false);
+        m_reporter-&gt;sectionEnded(testCaseSectionStats);</span>
+
+<span style = "background-color:#fdd">        auto const&amp; testInfo = m_activeTestCase-&gt;getTestCaseInfo();</span>
+
+<span style = "background-color:#fdd">        Totals deltaTotals;
+        deltaTotals.testCases.failed = 1;
+        deltaTotals.assertions.failed = 1;
+        m_reporter-&gt;testCaseEnded(TestCaseStats(testInfo,</span>
+                                  deltaTotals,
+                                  std::string(),
+                                  std::string(),
+                                  false));
+<span style = "background-color:#fdd">        m_totals.testCases.failed++;
+        m_reporter-&gt;testRunEnded(TestRunStats(m_runInfo, m_totals, false));
+    }</span>
+
+<span style = "background-color:#fdd">    bool RunContext::lastAssertionPassed() {
+         return m_lastAssertionPassed;
+    }</span>
+
+<span style = "background-color:#dfd">    void RunContext::assertionPassed() {
+        m_lastAssertionPassed = true;
+        ++m_totals.assertions.passed;
+        resetAssertionInfo();
+        m_messageScopes.clear();
+    }</span>
+
+<span style = "background-color:#dfd">    bool RunContext::aborting() const {
+        return m_totals.assertions.failed &gt;= static_cast&lt;std::size_t&gt;(m_config-&gt;abortAfter());
+    }</span>
+
+<span style = "background-color:#dfd">    void RunContext::runCurrentTest(std::string &amp; redirectedCout, std::string &amp; redirectedCerr) {
+        auto const&amp; testCaseInfo = m_activeTestCase-&gt;getTestCaseInfo();
+        SectionInfo testCaseSection(testCaseInfo.lineInfo, testCaseInfo.name);
+        m_reporter-&gt;sectionStarting(testCaseSection);
+        Counts prevAssertions = m_totals.assertions;
+        double duration = 0;
+        m_shouldReportUnexpected = true;
+        m_lastAssertionInfo = { "TEST_CASE"_sr, testCaseInfo.lineInfo, StringRef(), ResultDisposition::Normal };</span>
+
+<span style = "background-color:#dfd">        Timer timer;</span>
+        CATCH_TRY {
+<span style = "background-color:#dfd">            if (m_reporter-&gt;getPreferences().shouldRedirectStdOut) {</span>
+#if !defined(CATCH_CONFIG_EXPERIMENTAL_REDIRECT)
+<span style = "background-color:#fdd">                RedirectedStreams redirectedStreams(redirectedCout, redirectedCerr);</span>
+
+<span style = "background-color:#fdd">                timer.start();
+                invokeActiveTestCase();</span>
+#else
+                OutputRedirect r(redirectedCout, redirectedCerr);
+                timer.start();
+                invokeActiveTestCase();
+#endif
+<span style = "background-color:#fdd">            } else {</span>
+<span style = "background-color:#dfd">                timer.start();
+                invokeActiveTestCase();</span>
+            }
+<span style = "background-color:#dfd">            duration = timer.getElapsedSeconds();</span>
+<span style = "background-color:#fdd">        } CATCH_CATCH_ANON (TestFailureException&amp;) {</span>
+            // This just means the test was aborted due to failure
+<span style = "background-color:#fdd">        } CATCH_CATCH_ANON (TestSkipException&amp;) {</span>
+            // This just means the test was explicitly skipped
+<span style = "background-color:#fdd">        } CATCH_CATCH_ALL {</span>
+            // Under CATCH_CONFIG_FAST_COMPILE, unexpected exceptions under REQUIRE assertions
+            // are reported without translation at the point of origin.
+<span style = "background-color:#fdd">            if( m_shouldReportUnexpected ) {
+                AssertionReaction dummyReaction;
+                handleUnexpectedInflightException( m_lastAssertionInfo, translateActiveException(), dummyReaction );</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+<span style = "background-color:#dfd">        Counts assertions = m_totals.assertions - prevAssertions;
+        bool missingAssertions = testForMissingAssertions(assertions);</span>
+
+<span style = "background-color:#dfd">        m_testCaseTracker-&gt;close();
+        handleUnfinishedSections();
+        m_messages.clear();
+        m_messageScopes.clear();</span>
+
+<span style = "background-color:#dfd">        SectionStats testCaseSectionStats(CATCH_MOVE(testCaseSection), assertions, duration, missingAssertions);
+        m_reporter-&gt;sectionEnded(testCaseSectionStats);
+    }</span>
+
+<span style = "background-color:#dfd">    void RunContext::invokeActiveTestCase() {</span>
+        // We need to engage a handler for signals/structured exceptions
+        // before running the tests themselves, or the binary can crash
+        // without failed test being reported.
+<span style = "background-color:#dfd">        FatalConditionHandlerGuard _(&amp;m_fatalConditionhandler);</span>
+        // We keep having issue where some compilers warn about an unused
+        // variable, even though the type has non-trivial constructor and
+        // destructor. This is annoying and ugly, but it makes them stfu.
+        (void)_;
+
+<span style = "background-color:#dfd">        m_activeTestCase-&gt;invoke();
+    }</span>
+
+<span style = "background-color:#dfd">    void RunContext::handleUnfinishedSections() {</span>
+        // If sections ended prematurely due to an exception we stored their
+        // infos here so we can tear them down outside the unwind process.
+<span style = "background-color:#dfd">        for (auto it = m_unfinishedSections.rbegin(),
+             itEnd = m_unfinishedSections.rend();
+             it != itEnd;</span>
+<span style = "background-color:#fdd">             ++it)
+            sectionEnded(CATCH_MOVE(*it));</span>
+<span style = "background-color:#dfd">        m_unfinishedSections.clear();
+    }</span>
+
+    void RunContext::handleExpr(
+        AssertionInfo const&amp; info,
+        ITransientExpression const&amp; expr,
+        AssertionReaction&amp; reaction
+<span style = "background-color:#dfd">    ) {
+        bool negated = isFalseTest( info.resultDisposition );
+        bool result = expr.getResult() != negated;</span>
+
+<span style = "background-color:#dfd">        if( result ) {
+            if (!m_includeSuccessfulResults) {
+                assertionPassed();
+            }</span>
+            else {
+<span style = "background-color:#fdd">                reportExpr(info, ResultWas::Ok, &amp;expr, negated);</span>
+            }
+<span style = "background-color:#dfd">        }</span>
+        else {
+<span style = "background-color:#fdd">            reportExpr(info, ResultWas::ExpressionFailed, &amp;expr, negated );
+            populateReaction( reaction );</span>
+        }
+<span style = "background-color:#dfd">        resetAssertionInfo();
+    }</span>
+    void RunContext::reportExpr(
+            AssertionInfo const &amp;info,
+            ResultWas::OfType resultType,
+            ITransientExpression const *expr,
+<span style = "background-color:#fdd">            bool negated ) {</span>
+
+<span style = "background-color:#fdd">        m_lastAssertionInfo = info;
+        AssertionResultData data( resultType, LazyExpression( negated ) );</span>
+
+<span style = "background-color:#fdd">        AssertionResult assertionResult{ info, CATCH_MOVE( data ) };
+        assertionResult.m_resultData.lazyExpression.m_transientExpression = expr;</span>
+
+<span style = "background-color:#fdd">        assertionEnded( CATCH_MOVE(assertionResult) );
+    }</span>
+
+    void RunContext::handleMessage(
+            AssertionInfo const&amp; info,
+            ResultWas::OfType resultType,
+            StringRef message,
+            AssertionReaction&amp; reaction
+<span style = "background-color:#fdd">    ) {
+        m_lastAssertionInfo = info;</span>
+
+<span style = "background-color:#fdd">        AssertionResultData data( resultType, LazyExpression( false ) );
+        data.message = static_cast&lt;std::string&gt;(message);
+        AssertionResult assertionResult{ m_lastAssertionInfo,</span>
+                                         CATCH_MOVE( data ) };
+
+<span style = "background-color:#fdd">        const auto isOk = assertionResult.isOk();
+        assertionEnded( CATCH_MOVE(assertionResult) );
+        if ( !isOk ) {
+            populateReaction( reaction );
+        } else if ( resultType == ResultWas::ExplicitSkip ) {</span>
+            // TODO: Need to handle this explicitly, as ExplicitSkip is
+            // considered "OK"
+<span style = "background-color:#fdd">            reaction.shouldSkip = true;</span>
+        }
+<span style = "background-color:#fdd">        resetAssertionInfo();
+    }</span>
+    void RunContext::handleUnexpectedExceptionNotThrown(
+            AssertionInfo const&amp; info,
+            AssertionReaction&amp; reaction
+<span style = "background-color:#fdd">    ) {
+        handleNonExpr(info, Catch::ResultWas::DidntThrowException, reaction);
+    }</span>
+
+    void RunContext::handleUnexpectedInflightException(
+            AssertionInfo const&amp; info,
+            std::string&amp;&amp; message,
+            AssertionReaction&amp; reaction
+<span style = "background-color:#fdd">    ) {
+        m_lastAssertionInfo = info;</span>
+
+<span style = "background-color:#fdd">        AssertionResultData data( ResultWas::ThrewException, LazyExpression( false ) );
+        data.message = CATCH_MOVE(message);
+        AssertionResult assertionResult{ info, CATCH_MOVE(data) };
+        assertionEnded( CATCH_MOVE(assertionResult) );
+        populateReaction( reaction );
+        resetAssertionInfo();
+    }</span>
+
+<span style = "background-color:#fdd">    void RunContext::populateReaction( AssertionReaction&amp; reaction ) {
+        reaction.shouldDebugBreak = m_config-&gt;shouldDebugBreak();
+        reaction.shouldThrow = aborting() || (m_lastAssertionInfo.resultDisposition &amp; ResultDisposition::Normal);
+    }</span>
+
+    void RunContext::handleIncomplete(
+            AssertionInfo const&amp; info
+<span style = "background-color:#fdd">    ) {</span>
+        using namespace std::string_literals;
+<span style = "background-color:#fdd">        m_lastAssertionInfo = info;</span>
+
+<span style = "background-color:#fdd">        AssertionResultData data( ResultWas::ThrewException, LazyExpression( false ) );
+        data.message = "Exception translation was disabled by CATCH_CONFIG_FAST_COMPILE"s;
+        AssertionResult assertionResult{ info, CATCH_MOVE( data ) };
+        assertionEnded( CATCH_MOVE(assertionResult) );
+        resetAssertionInfo();
+    }</span>
+    void RunContext::handleNonExpr(
+            AssertionInfo const &amp;info,
+            ResultWas::OfType resultType,
+            AssertionReaction &amp;reaction
+<span style = "background-color:#dfd">    ) {
+        m_lastAssertionInfo = info;</span>
+
+<span style = "background-color:#dfd">        AssertionResultData data( resultType, LazyExpression( false ) );
+        AssertionResult assertionResult{ info, CATCH_MOVE( data ) };</span>
+
+<span style = "background-color:#dfd">        const auto isOk = assertionResult.isOk();
+        assertionEnded( CATCH_MOVE(assertionResult) );
+        if ( !isOk ) { populateReaction( reaction ); }
+        resetAssertionInfo();
+    }</span>
+
+
+<span style = "background-color:#dfd">    IResultCapture&amp; getResultCapture() {
+        if (auto* capture = getCurrentContext().getResultCapture())
+            return *capture;</span>
+        else
+<span style = "background-color:#fdd">            CATCH_INTERNAL_ERROR("No result capture instance");</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    void seedRng(IConfig const&amp; config) {
+        sharedRng().seed(config.rngSeed());
+    }</span>
+
+<span style = "background-color:#fdd">    unsigned int rngSeed() {
+        return getCurrentContext().getConfig()-&gt;rngSeed();
+    }</span>
+
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

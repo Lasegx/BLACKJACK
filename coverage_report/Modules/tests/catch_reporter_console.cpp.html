@@ -1,0 +1,691 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_console.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_console.hpp&gt;
+
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/catch_version.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/internal/catch_console_width.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/catch_get_random_seed.hpp&gt;
+
+#include &lt;cstdio&gt;
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable:4061) // Not all labels are EXPLICITLY handled in switch
+ // Note that 4062 (not all labels are handled and default is missing) is enabled
+#endif
+
+#if defined(__clang__)
+#  pragma clang diagnostic push
+// For simplicity, benchmarking-only helpers are always enabled
+#  pragma clang diagnostic ignored "-Wunused-function"
+#endif
+
+
+
+namespace Catch {
+
+namespace {
+
+// Formatter impl for ConsoleReporter
+class ConsoleAssertionPrinter {
+public:
+    ConsoleAssertionPrinter&amp; operator= (ConsoleAssertionPrinter const&amp;) = delete;
+    ConsoleAssertionPrinter(ConsoleAssertionPrinter const&amp;) = delete;
+    ConsoleAssertionPrinter(std::ostream&amp; _stream, AssertionStats const&amp; _stats, ColourImpl* colourImpl_, bool _printInfoMessages)
+<span style = "background-color:#fdd">        : stream(_stream),
+        stats(_stats),
+        result(_stats.assertionResult),
+        colour(Colour::None),
+        messages(_stats.infoMessages),
+        colourImpl(colourImpl_),
+        printInfoMessages(_printInfoMessages) {
+        switch (result.getResultType()) {</span>
+        case ResultWas::Ok:
+<span style = "background-color:#fdd">            colour = Colour::Success;
+            passOrFail = "PASSED"_sr;</span>
+            //if( result.hasMessage() )
+<span style = "background-color:#fdd">            if (messages.size() == 1)
+                messageLabel = "with message"_sr;
+            if (messages.size() &gt; 1)
+                messageLabel = "with messages"_sr;
+            break;</span>
+        case ResultWas::ExpressionFailed:
+<span style = "background-color:#fdd">            if (result.isOk()) {
+                colour = Colour::Success;
+                passOrFail = "FAILED - but was ok"_sr;
+            } else {
+                colour = Colour::Error;
+                passOrFail = "FAILED"_sr;</span>
+            }
+<span style = "background-color:#fdd">            if (messages.size() == 1)
+                messageLabel = "with message"_sr;
+            if (messages.size() &gt; 1)
+                messageLabel = "with messages"_sr;
+            break;</span>
+        case ResultWas::ThrewException:
+<span style = "background-color:#fdd">            colour = Colour::Error;
+            passOrFail = "FAILED"_sr;</span>
+            // todo switch
+<span style = "background-color:#fdd">            switch (messages.size()) { case 0:
+                messageLabel = "due to unexpected exception with "_sr;
+                break;</span>
+            case 1:
+<span style = "background-color:#fdd">                messageLabel = "due to unexpected exception with message"_sr;
+                break;</span>
+            default:
+<span style = "background-color:#fdd">                messageLabel = "due to unexpected exception with messages"_sr;</span>
+                break;
+            }
+<span style = "background-color:#fdd">            break;</span>
+        case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">            colour = Colour::Error;
+            passOrFail = "FAILED"_sr;
+            messageLabel = "due to a fatal error condition"_sr;
+            break;</span>
+        case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">            colour = Colour::Error;
+            passOrFail = "FAILED"_sr;
+            messageLabel = "because no exception was thrown where one was expected"_sr;
+            break;</span>
+        case ResultWas::Info:
+<span style = "background-color:#fdd">            messageLabel = "info"_sr;
+            break;</span>
+        case ResultWas::Warning:
+<span style = "background-color:#fdd">            messageLabel = "warning"_sr;
+            break;</span>
+        case ResultWas::ExplicitFailure:
+<span style = "background-color:#fdd">            passOrFail = "FAILED"_sr;
+            colour = Colour::Error;
+            if (messages.size() == 1)
+                messageLabel = "explicitly with message"_sr;
+            if (messages.size() &gt; 1)
+                messageLabel = "explicitly with messages"_sr;
+            break;</span>
+        case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">            colour = Colour::Skip;
+            passOrFail = "SKIPPED"_sr;
+            if (messages.size() == 1)
+                messageLabel = "explicitly with message"_sr;
+            if (messages.size() &gt; 1)
+                messageLabel = "explicitly with messages"_sr;
+            break;</span>
+            // These cases are here to prevent compiler warnings
+        case ResultWas::Unknown:
+        case ResultWas::FailureBit:
+        case ResultWas::Exception:
+<span style = "background-color:#fdd">            passOrFail = "** internal error **"_sr;
+            colour = Colour::Error;</span>
+            break;
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void print() const {
+        printSourceInfo();
+        if (stats.totals.assertions.total() &gt; 0) {
+            printResultType();
+            printOriginalExpression();
+            printReconstructedExpression();
+        } else {
+            stream &lt;&lt; '\n';</span>
+        }
+<span style = "background-color:#fdd">        printMessage();
+    }</span>
+
+private:
+<span style = "background-color:#fdd">    void printResultType() const {
+        if (!passOrFail.empty()) {
+            stream &lt;&lt; colourImpl-&gt;guardColour(colour) &lt;&lt; passOrFail &lt;&lt; ":\n";</span>
+        }
+<span style = "background-color:#fdd">    }
+    void printOriginalExpression() const {
+        if (result.hasExpression()) {
+            stream &lt;&lt; colourImpl-&gt;guardColour( Colour::OriginalExpression )</span>
+                   &lt;&lt; "  " &lt;&lt; result.getExpressionInMacro() &lt;&lt; '\n';
+        }
+<span style = "background-color:#fdd">    }
+    void printReconstructedExpression() const {
+        if (result.hasExpandedExpression()) {
+            stream &lt;&lt; "with expansion:\n";
+            stream &lt;&lt; colourImpl-&gt;guardColour( Colour::ReconstructedExpression )</span>
+                   &lt;&lt; TextFlow::Column( result.getExpandedExpression() )
+                          .indent( 2 )
+                   &lt;&lt; '\n';
+        }
+<span style = "background-color:#fdd">    }
+    void printMessage() const {
+        if (!messageLabel.empty())
+            stream &lt;&lt; messageLabel &lt;&lt; ':' &lt;&lt; '\n';
+        for (auto const&amp; msg : messages) {</span>
+            // If this assertion is a warning ignore any INFO messages
+<span style = "background-color:#fdd">            if (printInfoMessages || msg.type != ResultWas::Info)
+                stream &lt;&lt; TextFlow::Column(msg.message).indent(2) &lt;&lt; '\n';
+        }
+    }
+    void printSourceInfo() const {
+        stream &lt;&lt; colourImpl-&gt;guardColour( Colour::FileName )</span>
+               &lt;&lt; result.getSourceInfo() &lt;&lt; ": ";
+<span style = "background-color:#fdd">    }</span>
+
+    std::ostream&amp; stream;
+    AssertionStats const&amp; stats;
+    AssertionResult const&amp; result;
+    Colour::Code colour;
+    StringRef passOrFail;
+    StringRef messageLabel;
+    std::vector&lt;MessageInfo&gt; const&amp; messages;
+    ColourImpl* colourImpl;
+    bool printInfoMessages;
+};
+
+<span style = "background-color:#dfd">std::size_t makeRatio( std::uint64_t number, std::uint64_t total ) {
+    const auto ratio = total &gt; 0 ? CATCH_CONFIG_CONSOLE_WIDTH * number / total : 0;
+    return (ratio == 0 &amp;&amp; number &gt; 0) ? 1 : static_cast&lt;std::size_t&gt;(ratio);
+}</span>
+
+std::size_t&amp;
+<span style = "background-color:#dfd">findMax( std::size_t&amp; i, std::size_t&amp; j, std::size_t&amp; k, std::size_t&amp; l ) {
+    if (i &gt; j &amp;&amp; i &gt; k &amp;&amp; i &gt; l)</span>
+<span style = "background-color:#fdd">        return i;</span>
+<span style = "background-color:#dfd">    else if (j &gt; k &amp;&amp; j &gt; l)</span>
+<span style = "background-color:#fdd">        return j;</span>
+<span style = "background-color:#dfd">    else if (k &gt; l)
+        return k;</span>
+    else
+<span style = "background-color:#fdd">        return l;</span>
+<span style = "background-color:#dfd">}</span>
+
+struct ColumnBreak {};
+struct RowBreak {};
+struct OutputFlush {};
+
+class Duration {
+    enum class Unit {
+        Auto,
+        Nanoseconds,
+        Microseconds,
+        Milliseconds,
+        Seconds,
+        Minutes
+    };
+    static const uint64_t s_nanosecondsInAMicrosecond = 1000;
+    static const uint64_t s_nanosecondsInAMillisecond = 1000 * s_nanosecondsInAMicrosecond;
+    static const uint64_t s_nanosecondsInASecond = 1000 * s_nanosecondsInAMillisecond;
+    static const uint64_t s_nanosecondsInAMinute = 60 * s_nanosecondsInASecond;
+
+    double m_inNanoseconds;
+    Unit m_units;
+
+public:
+    explicit Duration(double inNanoseconds, Unit units = Unit::Auto)
+<span style = "background-color:#fdd">        : m_inNanoseconds(inNanoseconds),
+        m_units(units) {
+        if (m_units == Unit::Auto) {
+            if (m_inNanoseconds &lt; s_nanosecondsInAMicrosecond)
+                m_units = Unit::Nanoseconds;
+            else if (m_inNanoseconds &lt; s_nanosecondsInAMillisecond)
+                m_units = Unit::Microseconds;
+            else if (m_inNanoseconds &lt; s_nanosecondsInASecond)
+                m_units = Unit::Milliseconds;
+            else if (m_inNanoseconds &lt; s_nanosecondsInAMinute)
+                m_units = Unit::Seconds;</span>
+            else
+<span style = "background-color:#fdd">                m_units = Unit::Minutes;</span>
+        }
+
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    auto value() const -&gt; double {
+        switch (m_units) {</span>
+        case Unit::Microseconds:
+<span style = "background-color:#fdd">            return m_inNanoseconds / static_cast&lt;double&gt;(s_nanosecondsInAMicrosecond);</span>
+        case Unit::Milliseconds:
+<span style = "background-color:#fdd">            return m_inNanoseconds / static_cast&lt;double&gt;(s_nanosecondsInAMillisecond);</span>
+        case Unit::Seconds:
+<span style = "background-color:#fdd">            return m_inNanoseconds / static_cast&lt;double&gt;(s_nanosecondsInASecond);</span>
+        case Unit::Minutes:
+<span style = "background-color:#fdd">            return m_inNanoseconds / static_cast&lt;double&gt;(s_nanosecondsInAMinute);</span>
+        default:
+<span style = "background-color:#fdd">            return m_inNanoseconds;</span>
+        }
+<span style = "background-color:#fdd">    }
+    StringRef unitsAsString() const {
+        switch (m_units) {</span>
+        case Unit::Nanoseconds:
+<span style = "background-color:#fdd">            return "ns"_sr;</span>
+        case Unit::Microseconds:
+<span style = "background-color:#fdd">            return "us"_sr;</span>
+        case Unit::Milliseconds:
+<span style = "background-color:#fdd">            return "ms"_sr;</span>
+        case Unit::Seconds:
+<span style = "background-color:#fdd">            return "s"_sr;</span>
+        case Unit::Minutes:
+<span style = "background-color:#fdd">            return "m"_sr;</span>
+        default:
+<span style = "background-color:#fdd">            return "** internal error **"_sr;</span>
+        }
+
+<span style = "background-color:#fdd">    }
+    friend auto operator &lt;&lt; (std::ostream&amp; os, Duration const&amp; duration) -&gt; std::ostream&amp; {
+        return os &lt;&lt; duration.value() &lt;&lt; ' ' &lt;&lt; duration.unitsAsString();
+    }</span>
+};
+} // end anon namespace
+
+enum class Justification { Left, Right };
+
+struct ColumnInfo {
+    std::string name;
+    std::size_t width;
+    Justification justification;
+};
+
+class TablePrinter {
+    std::ostream&amp; m_os;
+    std::vector&lt;ColumnInfo&gt; m_columnInfos;
+    ReusableStringStream m_oss;
+<span style = "background-color:#dfd">    int m_currentColumn = -1;
+    bool m_isOpen = false;</span>
+
+public:
+    TablePrinter( std::ostream&amp; os, std::vector&lt;ColumnInfo&gt; columnInfos )
+<span style = "background-color:#dfd">    :   m_os( os ),
+        m_columnInfos( CATCH_MOVE( columnInfos ) ) {}</span>
+
+<span style = "background-color:#fdd">    auto columnInfos() const -&gt; std::vector&lt;ColumnInfo&gt; const&amp; {
+        return m_columnInfos;
+    }</span>
+
+<span style = "background-color:#fdd">    void open() {
+        if (!m_isOpen) {
+            m_isOpen = true;
+            *this &lt;&lt; RowBreak();</span>
+
+<span style = "background-color:#fdd">			TextFlow::Columns headerCols;
+			for (auto const&amp; info : m_columnInfos) {
+                assert(info.width &gt; 2);
+				headerCols += TextFlow::Column(info.name).width(info.width - 2);
+                headerCols += TextFlow::Spacer( 2 );
+			}
+			m_os &lt;&lt; headerCols &lt;&lt; '\n';</span>
+
+<span style = "background-color:#fdd">            m_os &lt;&lt; lineOfChars('-') &lt;&lt; '\n';
+        }
+    }</span>
+<span style = "background-color:#dfd">    void close() {
+        if (m_isOpen) {</span>
+<span style = "background-color:#fdd">            *this &lt;&lt; RowBreak();
+            m_os &lt;&lt; '\n' &lt;&lt; std::flush;
+            m_isOpen = false;</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+    template&lt;typename T&gt;
+<span style = "background-color:#fdd">    friend TablePrinter&amp; operator&lt;&lt; (TablePrinter&amp; tp, T const&amp; value) {
+        tp.m_oss &lt;&lt; value;
+        return tp;
+    }</span>
+
+<span style = "background-color:#fdd">    friend TablePrinter&amp; operator&lt;&lt; (TablePrinter&amp; tp, ColumnBreak) {
+        auto colStr = tp.m_oss.str();
+        const auto strSize = colStr.size();
+        tp.m_oss.str("");
+        tp.open();
+        if (tp.m_currentColumn == static_cast&lt;int&gt;(tp.m_columnInfos.size() - 1)) {
+            tp.m_currentColumn = -1;
+            tp.m_os &lt;&lt; '\n';</span>
+        }
+<span style = "background-color:#fdd">        tp.m_currentColumn++;</span>
+
+<span style = "background-color:#fdd">        auto colInfo = tp.m_columnInfos[tp.m_currentColumn];
+        auto padding = (strSize + 1 &lt; colInfo.width)</span>
+            ? std::string(colInfo.width - (strSize + 1), ' ')
+            : std::string();
+<span style = "background-color:#fdd">        if (colInfo.justification == Justification::Left)
+            tp.m_os &lt;&lt; colStr &lt;&lt; padding &lt;&lt; ' ';</span>
+        else
+<span style = "background-color:#fdd">            tp.m_os &lt;&lt; padding &lt;&lt; colStr &lt;&lt; ' ';
+        return tp;
+    }</span>
+
+<span style = "background-color:#fdd">    friend TablePrinter&amp; operator&lt;&lt; (TablePrinter&amp; tp, RowBreak) {
+        if (tp.m_currentColumn &gt; 0) {
+            tp.m_os &lt;&lt; '\n';
+            tp.m_currentColumn = -1;</span>
+        }
+<span style = "background-color:#fdd">        return tp;
+    }</span>
+
+<span style = "background-color:#fdd">    friend TablePrinter&amp; operator&lt;&lt;(TablePrinter&amp; tp, OutputFlush) {
+        tp.m_os &lt;&lt; std::flush;
+        return tp;
+    }</span>
+};
+
+ConsoleReporter::ConsoleReporter(ReporterConfig&amp;&amp; config):
+<span style = "background-color:#dfd">    StreamingReporterBase( CATCH_MOVE( config ) ),
+    m_tablePrinter(Detail::make_unique&lt;TablePrinter&gt;(m_stream,</span>
+        [&amp;config]() -&gt; std::vector&lt;ColumnInfo&gt; {
+<span style = "background-color:#dfd">        if (config.fullConfig()-&gt;benchmarkNoAnalysis())</span>
+        {
+<span style = "background-color:#fdd">            return{</span>
+                { "benchmark name", CATCH_CONFIG_CONSOLE_WIDTH - 43, Justification::Left },
+                { "     samples", 14, Justification::Right },
+                { "  iterations", 14, Justification::Right },
+                { "        mean", 14, Justification::Right }
+            };
+<span style = "background-color:#fdd">        }</span>
+        else
+        {
+<span style = "background-color:#dfd">            return{</span>
+                { "benchmark name", CATCH_CONFIG_CONSOLE_WIDTH - 43, Justification::Left },
+                { "samples      mean       std dev", 14, Justification::Right },
+                { "iterations   low mean   low std dev", 14, Justification::Right },
+                { "est run time high mean  high std dev", 14, Justification::Right }
+            };
+        }
+<span style = "background-color:#dfd">    }())) {}
+ConsoleReporter::~ConsoleReporter() = default;</span>
+
+<span style = "background-color:#fdd">std::string ConsoleReporter::getDescription() {
+    return "Reports test results as plain lines of text";
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::noMatchingTestCases( StringRef unmatchedSpec ) {
+    m_stream &lt;&lt; "No test cases matched '" &lt;&lt; unmatchedSpec &lt;&lt; "'\n";
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::reportInvalidTestSpec( StringRef arg ) {
+    m_stream &lt;&lt; "Invalid Filter: " &lt;&lt; arg &lt;&lt; '\n';
+}</span>
+
+<span style = "background-color:#dfd">void ConsoleReporter::assertionStarting(AssertionInfo const&amp;) {}</span>
+
+<span style = "background-color:#dfd">void ConsoleReporter::assertionEnded(AssertionStats const&amp; _assertionStats) {
+    AssertionResult const&amp; result = _assertionStats.assertionResult;</span>
+
+<span style = "background-color:#dfd">    bool includeResults = m_config-&gt;includeSuccessfulResults() || !result.isOk();</span>
+
+    // Drop out if result was successful but we're not printing them.
+    // TODO: Make configurable whether skips should be printed
+<span style = "background-color:#dfd">    if (!includeResults &amp;&amp; result.getResultType() != ResultWas::Warning &amp;&amp; result.getResultType() != ResultWas::ExplicitSkip)
+        return;</span>
+
+<span style = "background-color:#fdd">    lazyPrint();</span>
+
+<span style = "background-color:#fdd">    ConsoleAssertionPrinter printer(m_stream, _assertionStats, m_colour.get(), includeResults);
+    printer.print();
+    m_stream &lt;&lt; '\n' &lt;&lt; std::flush;</span>
+<span style = "background-color:#dfd">}</span>
+
+<span style = "background-color:#dfd">void ConsoleReporter::sectionStarting(SectionInfo const&amp; _sectionInfo) {
+    m_tablePrinter-&gt;close();
+    m_headerPrinted = false;
+    StreamingReporterBase::sectionStarting(_sectionInfo);
+}
+void ConsoleReporter::sectionEnded(SectionStats const&amp; _sectionStats) {
+    m_tablePrinter-&gt;close();
+    if (_sectionStats.missingAssertions) {</span>
+<span style = "background-color:#fdd">        lazyPrint();
+        auto guard =</span>
+            m_colour-&gt;guardColour( Colour::ResultError ).engage( m_stream );
+<span style = "background-color:#fdd">        if (m_sectionStack.size() &gt; 1)
+            m_stream &lt;&lt; "\nNo assertions in section";</span>
+        else
+<span style = "background-color:#fdd">            m_stream &lt;&lt; "\nNo assertions in test case";
+        m_stream &lt;&lt; " '" &lt;&lt; _sectionStats.sectionInfo.name &lt;&lt; "'\n\n" &lt;&lt; std::flush;
+    }</span>
+<span style = "background-color:#dfd">    double dur = _sectionStats.durationInSeconds;
+    if (shouldShowDuration(*m_config, dur)) {</span>
+<span style = "background-color:#fdd">        m_stream &lt;&lt; getFormattedDuration(dur) &lt;&lt; " s: " &lt;&lt; _sectionStats.sectionInfo.name &lt;&lt; '\n' &lt;&lt; std::flush;</span>
+    }
+<span style = "background-color:#dfd">    if (m_headerPrinted) {</span>
+<span style = "background-color:#fdd">        m_headerPrinted = false;</span>
+    }
+<span style = "background-color:#dfd">    StreamingReporterBase::sectionEnded(_sectionStats);
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::benchmarkPreparing( StringRef name ) {
+	lazyPrintWithoutClosingBenchmarkTable();</span>
+
+<span style = "background-color:#fdd">	auto nameCol = TextFlow::Column( static_cast&lt;std::string&gt;( name ) )</span>
+                       .width( m_tablePrinter-&gt;columnInfos()[0].width - 2 );
+
+<span style = "background-color:#fdd">	bool firstLine = true;
+	for (auto line : nameCol) {
+		if (!firstLine)
+			(*m_tablePrinter) &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak();</span>
+		else
+<span style = "background-color:#fdd">			firstLine = false;</span>
+
+<span style = "background-color:#fdd">		(*m_tablePrinter) &lt;&lt; line &lt;&lt; ColumnBreak();
+	}
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::benchmarkStarting(BenchmarkInfo const&amp; info) {
+    (*m_tablePrinter) &lt;&lt; info.samples &lt;&lt; ColumnBreak()</span>
+        &lt;&lt; info.iterations &lt;&lt; ColumnBreak();
+<span style = "background-color:#fdd">    if ( !m_config-&gt;benchmarkNoAnalysis() ) {
+        ( *m_tablePrinter )</span>
+            &lt;&lt; Duration( info.estimatedDuration ) &lt;&lt; ColumnBreak();
+    }
+<span style = "background-color:#fdd">    ( *m_tablePrinter ) &lt;&lt; OutputFlush{};
+}
+void ConsoleReporter::benchmarkEnded(BenchmarkStats&lt;&gt; const&amp; stats) {
+    if (m_config-&gt;benchmarkNoAnalysis())</span>
+    {
+<span style = "background-color:#fdd">        (*m_tablePrinter) &lt;&lt; Duration(stats.mean.point.count()) &lt;&lt; ColumnBreak();
+    }</span>
+    else
+    {
+<span style = "background-color:#fdd">        (*m_tablePrinter) &lt;&lt; ColumnBreak()</span>
+            &lt;&lt; Duration(stats.mean.point.count()) &lt;&lt; ColumnBreak()
+            &lt;&lt; Duration(stats.mean.lower_bound.count()) &lt;&lt; ColumnBreak()
+            &lt;&lt; Duration(stats.mean.upper_bound.count()) &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak()
+            &lt;&lt; Duration(stats.standardDeviation.point.count()) &lt;&lt; ColumnBreak()
+            &lt;&lt; Duration(stats.standardDeviation.lower_bound.count()) &lt;&lt; ColumnBreak()
+            &lt;&lt; Duration(stats.standardDeviation.upper_bound.count()) &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak() &lt;&lt; ColumnBreak();
+    }
+<span style = "background-color:#fdd">}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::benchmarkFailed( StringRef error ) {
+    auto guard = m_colour-&gt;guardColour( Colour::Red ).engage( m_stream );
+    (*m_tablePrinter)</span>
+        &lt;&lt; "Benchmark failed (" &lt;&lt; error &lt;&lt; ')'
+        &lt;&lt; ColumnBreak() &lt;&lt; RowBreak();
+<span style = "background-color:#fdd">}</span>
+
+<span style = "background-color:#dfd">void ConsoleReporter::testCaseEnded(TestCaseStats const&amp; _testCaseStats) {
+    m_tablePrinter-&gt;close();
+    StreamingReporterBase::testCaseEnded(_testCaseStats);
+    m_headerPrinted = false;
+}
+void ConsoleReporter::testRunEnded(TestRunStats const&amp; _testRunStats) {
+    printTotalsDivider(_testRunStats.totals);
+    printTestRunTotals( m_stream, *m_colour, _testRunStats.totals );
+    m_stream &lt;&lt; '\n' &lt;&lt; std::flush;
+    StreamingReporterBase::testRunEnded(_testRunStats);
+}
+void ConsoleReporter::testRunStarting(TestRunInfo const&amp; _testInfo) {
+    StreamingReporterBase::testRunStarting(_testInfo);
+    if ( m_config-&gt;testSpec().hasFilters() ) {</span>
+<span style = "background-color:#fdd">        m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::BrightYellow ) &lt;&lt; "Filters: "</span>
+                 &lt;&lt; m_config-&gt;testSpec() &lt;&lt; '\n';
+    }
+<span style = "background-color:#dfd">    m_stream &lt;&lt; "Randomness seeded to: " &lt;&lt; getSeed() &lt;&lt; '\n';
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::lazyPrint() {</span>
+
+<span style = "background-color:#fdd">    m_tablePrinter-&gt;close();
+    lazyPrintWithoutClosingBenchmarkTable();
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::lazyPrintWithoutClosingBenchmarkTable() {</span>
+
+<span style = "background-color:#fdd">    if ( !m_testRunInfoPrinted ) {
+        lazyPrintRunInfo();</span>
+    }
+<span style = "background-color:#fdd">    if (!m_headerPrinted) {
+        printTestCaseAndSectionHeader();
+        m_headerPrinted = true;</span>
+    }
+<span style = "background-color:#fdd">}
+void ConsoleReporter::lazyPrintRunInfo() {
+    m_stream &lt;&lt; '\n'</span>
+             &lt;&lt; lineOfChars( '~' ) &lt;&lt; '\n'
+             &lt;&lt; m_colour-&gt;guardColour( Colour::SecondaryText )
+             &lt;&lt; currentTestRunInfo.name &lt;&lt; " is a Catch2 v" &lt;&lt; libraryVersion()
+             &lt;&lt; " host application.\n"
+             &lt;&lt; "Run with -? for options\n\n";
+
+<span style = "background-color:#fdd">    m_testRunInfoPrinted = true;
+}
+void ConsoleReporter::printTestCaseAndSectionHeader() {
+    assert(!m_sectionStack.empty());
+    printOpenHeader(currentTestCaseInfo-&gt;name);</span>
+
+<span style = "background-color:#fdd">    if (m_sectionStack.size() &gt; 1) {
+        auto guard = m_colour-&gt;guardColour( Colour::Headers ).engage( m_stream );</span>
+
+        auto
+<span style = "background-color:#fdd">            it = m_sectionStack.begin() + 1, // Skip first section (test case)
+            itEnd = m_sectionStack.end();
+        for (; it != itEnd; ++it)
+            printHeaderString(it-&gt;name, 2);
+    }</span>
+
+<span style = "background-color:#fdd">    SourceLineInfo lineInfo = m_sectionStack.back().lineInfo;</span>
+
+
+<span style = "background-color:#fdd">    m_stream &lt;&lt; lineOfChars( '-' ) &lt;&lt; '\n'</span>
+             &lt;&lt; m_colour-&gt;guardColour( Colour::FileName ) &lt;&lt; lineInfo &lt;&lt; '\n'
+             &lt;&lt; lineOfChars( '.' ) &lt;&lt; "\n\n"
+             &lt;&lt; std::flush;
+<span style = "background-color:#fdd">}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::printClosedHeader(std::string const&amp; _name) {
+    printOpenHeader(_name);
+    m_stream &lt;&lt; lineOfChars('.') &lt;&lt; '\n';
+}
+void ConsoleReporter::printOpenHeader(std::string const&amp; _name) {
+    m_stream &lt;&lt; lineOfChars('-') &lt;&lt; '\n';</span>
+    {
+<span style = "background-color:#fdd">        auto guard = m_colour-&gt;guardColour( Colour::Headers ).engage( m_stream );
+        printHeaderString(_name);
+    }
+}</span>
+
+<span style = "background-color:#fdd">void ConsoleReporter::printHeaderString(std::string const&amp; _string, std::size_t indent) {</span>
+    // We want to get a bit fancy with line breaking here, so that subsequent
+    // lines start after ":" if one is present, e.g.
+    // ```
+    // blablabla: Fancy
+    //            linebreaking
+    // ```
+    // but we also want to avoid problems with overly long indentation causing
+    // the text to take up too many lines, e.g.
+    // ```
+    // blablabla: F
+    //            a
+    //            n
+    //            c
+    //            y
+    //            .
+    //            .
+    //            .
+    // ```
+    // So we limit the prefix indentation check to first quarter of the possible
+    // width
+<span style = "background-color:#fdd">    std::size_t idx = _string.find( ": " );
+    if ( idx != std::string::npos &amp;&amp; idx &lt; CATCH_CONFIG_CONSOLE_WIDTH / 4 ) {
+        idx += 2;
+    } else {
+        idx = 0;</span>
+    }
+<span style = "background-color:#fdd">    m_stream &lt;&lt; TextFlow::Column( _string )</span>
+                  .indent( indent + idx )
+                  .initialIndent( indent )
+           &lt;&lt; '\n';
+<span style = "background-color:#fdd">}</span>
+
+<span style = "background-color:#dfd">void ConsoleReporter::printTotalsDivider(Totals const&amp; totals) {
+    if (totals.testCases.total() &gt; 0) {
+        std::size_t failedRatio = makeRatio(totals.testCases.failed, totals.testCases.total());
+        std::size_t failedButOkRatio = makeRatio(totals.testCases.failedButOk, totals.testCases.total());
+        std::size_t passedRatio = makeRatio(totals.testCases.passed, totals.testCases.total());
+        std::size_t skippedRatio = makeRatio(totals.testCases.skipped, totals.testCases.total());
+        while (failedRatio + failedButOkRatio + passedRatio + skippedRatio &lt; CATCH_CONFIG_CONSOLE_WIDTH - 1)</span>
+<span style = "background-color:#fdd">            findMax(failedRatio, failedButOkRatio, passedRatio, skippedRatio)++;</span>
+<span style = "background-color:#dfd">        while (failedRatio + failedButOkRatio + passedRatio &gt; CATCH_CONFIG_CONSOLE_WIDTH - 1)
+            findMax(failedRatio, failedButOkRatio, passedRatio, skippedRatio)--;</span>
+
+<span style = "background-color:#dfd">        m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::Error )</span>
+                 &lt;&lt; std::string( failedRatio, '=' )
+                 &lt;&lt; m_colour-&gt;guardColour( Colour::ResultExpectedFailure )
+                 &lt;&lt; std::string( failedButOkRatio, '=' );
+<span style = "background-color:#dfd">        if ( totals.testCases.allPassed() ) {
+            m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::ResultSuccess )</span>
+                     &lt;&lt; std::string( passedRatio, '=' );
+<span style = "background-color:#dfd">        } else {</span>
+<span style = "background-color:#fdd">            m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::Success )</span>
+                     &lt;&lt; std::string( passedRatio, '=' );
+        }
+<span style = "background-color:#dfd">        m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::Skip )</span>
+                 &lt;&lt; std::string( skippedRatio, '=' );
+<span style = "background-color:#dfd">    } else {</span>
+<span style = "background-color:#fdd">        m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::Warning )</span>
+                 &lt;&lt; std::string( CATCH_CONFIG_CONSOLE_WIDTH - 1, '=' );
+    }
+<span style = "background-color:#dfd">    m_stream &lt;&lt; '\n';
+}</span>
+
+} // end namespace Catch
+
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#endif</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

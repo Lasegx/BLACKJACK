@@ -1,0 +1,177 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_cumulative_base.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_REPORTER_CUMULATIVE_BASE_HPP_INCLUDED
+#define CATCH_REPORTER_CUMULATIVE_BASE_HPP_INCLUDED
+
+#include &lt;catch2/reporters/catch_reporter_common_base.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_unique_ptr.hpp&gt;
+#include &lt;catch2/internal/catch_optional.hpp&gt;
+
+#include &lt;string&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+
+    namespace Detail {
+
+        //! Represents either an assertion or a benchmark result to be handled by cumulative reporter later
+        class AssertionOrBenchmarkResult {
+            // This should really be a variant, but this is much faster
+            // to write and the data layout here is already terrible
+            // enough that we do not have to care about the object size.
+            Optional&lt;AssertionStats&gt; m_assertion;
+            Optional&lt;BenchmarkStats&lt;&gt;&gt; m_benchmark;
+        public:
+            AssertionOrBenchmarkResult(AssertionStats const&amp; assertion);
+            AssertionOrBenchmarkResult(BenchmarkStats&lt;&gt; const&amp; benchmark);
+
+            bool isAssertion() const;
+            bool isBenchmark() const;
+
+            AssertionStats const&amp; asAssertion() const;
+            BenchmarkStats&lt;&gt; const&amp; asBenchmark() const;
+        };
+    }
+
+    /**
+     * Utility base for reporters that need to handle all results at once
+     *
+     * It stores tree of all test cases, sections and assertions, and after the
+     * test run is finished, calls into `testRunEndedCumulative` to pass the
+     * control to the deriving class.
+     *
+     * If you are deriving from this class and override any testing related
+     * member functions, you should first call into the base's implementation to
+     * avoid breaking the tree construction.
+     *
+     * Due to the way this base functions, it has to expand assertions up-front,
+     * even if they are later unused (e.g. because the deriving reporter does
+     * not report successful assertions, or because the deriving reporter does
+     * not use assertion expansion at all). Derived classes can use two
+     * customization points, `m_shouldStoreSuccesfulAssertions` and
+     * `m_shouldStoreFailedAssertions`, to disable the expansion and gain extra
+     * performance. **Accessing the assertion expansions if it wasn't stored is
+     * UB.**
+     */
+    class CumulativeReporterBase : public ReporterBase {
+    public:
+        template&lt;typename T, typename ChildNodeT&gt;
+        struct Node {
+<span style = "background-color:#fdd">            explicit Node( T const&amp; _value ) : value( _value ) {}</span>
+
+            using ChildNodes = std::vector&lt;Detail::unique_ptr&lt;ChildNodeT&gt;&gt;;
+            T value;
+            ChildNodes children;
+        };
+        struct SectionNode {
+<span style = "background-color:#fdd">            explicit SectionNode(SectionStats const&amp; _stats) : stats(_stats) {}</span>
+
+            bool operator == (SectionNode const&amp; other) const {
+                return stats.sectionInfo.lineInfo == other.stats.sectionInfo.lineInfo;
+            }
+
+            bool hasAnyAssertions() const;
+
+            SectionStats stats;
+            std::vector&lt;Detail::unique_ptr&lt;SectionNode&gt;&gt; childSections;
+            std::vector&lt;Detail::AssertionOrBenchmarkResult&gt; assertionsAndBenchmarks;
+            std::string stdOut;
+            std::string stdErr;
+        };
+
+
+        using TestCaseNode = Node&lt;TestCaseStats, SectionNode&gt;;
+        using TestRunNode = Node&lt;TestRunStats, TestCaseNode&gt;;
+
+        // GCC5 compat: we cannot use inherited constructor, because it
+        //              doesn't implement backport of P0136
+        CumulativeReporterBase(ReporterConfig&amp;&amp; _config):
+<span style = "background-color:#fdd">            ReporterBase(CATCH_MOVE(_config))
+        {}</span>
+        ~CumulativeReporterBase() override;
+
+<span style = "background-color:#fdd">        void benchmarkPreparing( StringRef ) override {}
+        void benchmarkStarting( BenchmarkInfo const&amp; ) override {}</span>
+        void benchmarkEnded( BenchmarkStats&lt;&gt; const&amp; benchmarkStats ) override;
+<span style = "background-color:#fdd">        void benchmarkFailed( StringRef ) override {}</span>
+
+<span style = "background-color:#fdd">        void noMatchingTestCases( StringRef ) override {}
+        void reportInvalidTestSpec( StringRef ) override {}
+        void fatalErrorEncountered( StringRef /*error*/ ) override {}</span>
+
+<span style = "background-color:#fdd">        void testRunStarting( TestRunInfo const&amp; ) override {}</span>
+
+<span style = "background-color:#fdd">        void testCaseStarting( TestCaseInfo const&amp; ) override {}
+        void testCasePartialStarting( TestCaseInfo const&amp;, uint64_t ) override {}</span>
+        void sectionStarting( SectionInfo const&amp; sectionInfo ) override;
+
+<span style = "background-color:#fdd">        void assertionStarting( AssertionInfo const&amp; ) override {}</span>
+
+        void assertionEnded( AssertionStats const&amp; assertionStats ) override;
+        void sectionEnded( SectionStats const&amp; sectionStats ) override;
+<span style = "background-color:#fdd">        void testCasePartialEnded( TestCaseStats const&amp;, uint64_t ) override {}</span>
+        void testCaseEnded( TestCaseStats const&amp; testCaseStats ) override;
+        void testRunEnded( TestRunStats const&amp; testRunStats ) override;
+        //! Customization point: called after last test finishes (testRunEnded has been handled)
+        virtual void testRunEndedCumulative() = 0;
+
+<span style = "background-color:#fdd">        void skipTest(TestCaseInfo const&amp;) override {}</span>
+
+    protected:
+        //! Should the cumulative base store the assertion expansion for successful assertions?
+<span style = "background-color:#fdd">        bool m_shouldStoreSuccesfulAssertions = true;</span>
+        //! Should the cumulative base store the assertion expansion for failed assertions?
+<span style = "background-color:#fdd">        bool m_shouldStoreFailedAssertions = true;</span>
+
+        // We need lazy construction here. We should probably refactor it
+        // later, after the events are redone.
+        //! The root node of the test run tree.
+        Detail::unique_ptr&lt;TestRunNode&gt; m_testRun;
+
+    private:
+        // Note: We rely on pointer identity being stable, which is why
+        //       we store pointers to the nodes rather than the values.
+        std::vector&lt;Detail::unique_ptr&lt;TestCaseNode&gt;&gt; m_testCases;
+        // Root section of the _current_ test case
+        Detail::unique_ptr&lt;SectionNode&gt; m_rootSection;
+        // Deepest section of the _current_ test case
+<span style = "background-color:#fdd">        SectionNode* m_deepestSection = nullptr;</span>
+        // Stack of _active_ sections in the _current_ test case
+        std::vector&lt;SectionNode*&gt; m_sectionStack;
+    };
+
+} // end namespace Catch
+
+#endif // CATCH_REPORTER_CUMULATIVE_BASE_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

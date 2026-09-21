@@ -1,0 +1,340 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_commandline.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_commandline.hpp&gt;
+
+#include &lt;catch2/catch_config.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_registry_hub.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_parse_numbers.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_spec_parser.hpp&gt;
+
+#include &lt;fstream&gt;
+#include &lt;string&gt;
+
+namespace Catch {
+
+<span style = "background-color:#dfd">    Clara::Parser makeCommandLineParser( ConfigData&amp; config ) {</span>
+
+        using namespace Clara;
+
+        auto const setWarning = [&amp;]( std::string const&amp; warning ) {
+<span style = "background-color:#fdd">            if ( warning == "NoAssertions" ) {
+                config.warnings = static_cast&lt;WarnAbout::What&gt;(config.warnings | WarnAbout::NoAssertions);
+                return ParserResult::ok( ParseResultType::Matched );
+            } else if ( warning == "UnmatchedTestSpec" ) {
+                config.warnings = static_cast&lt;WarnAbout::What&gt;(config.warnings | WarnAbout::UnmatchedTestSpec);
+                return ParserResult::ok( ParseResultType::Matched );</span>
+            }
+
+<span style = "background-color:#fdd">            return ParserResult ::runtimeError(</span>
+                "Unrecognised warning option: '" + warning + '\'' );
+<span style = "background-color:#dfd">        };</span>
+        auto const loadTestNamesFromFile = [&amp;]( std::string const&amp; filename ) {
+<span style = "background-color:#fdd">                std::ifstream f( filename.c_str() );
+                if( !f.is_open() )
+                    return ParserResult::runtimeError( "Unable to load input file: '" + filename + '\'' );</span>
+
+<span style = "background-color:#fdd">                std::string line;
+                while( std::getline( f, line ) ) {
+                    line = trim(line);
+                    if( !line.empty() &amp;&amp; !startsWith( line, '#' ) ) {
+                        if( !startsWith( line, '"' ) )
+                            line = '"' + line + '"';
+                        config.testsOrTags.push_back( line );
+                        config.testsOrTags.emplace_back( "," );</span>
+                    }
+<span style = "background-color:#fdd">                }</span>
+                //Remove comma in the end
+<span style = "background-color:#fdd">                if(!config.testsOrTags.empty())
+                    config.testsOrTags.erase( config.testsOrTags.end()-1 );</span>
+
+<span style = "background-color:#fdd">                return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">            };</span>
+        auto const setTestOrder = [&amp;]( std::string const&amp; order ) {
+<span style = "background-color:#fdd">                if( startsWith( "declared", order ) )
+                    config.runOrder = TestRunOrder::Declared;
+                else if( startsWith( "lexical", order ) )
+                    config.runOrder = TestRunOrder::LexicographicallySorted;
+                else if( startsWith( "random", order ) )
+                    config.runOrder = TestRunOrder::Randomized;</span>
+                else
+<span style = "background-color:#fdd">                    return ParserResult::runtimeError( "Unrecognised ordering: '" + order + '\'' );
+                return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">            };</span>
+        auto const setRngSeed = [&amp;]( std::string const&amp; seed ) {
+<span style = "background-color:#fdd">                if( seed == "time" ) {
+                    config.rngSeed = generateRandomSeed(GenerateFrom::Time);
+                    return ParserResult::ok(ParseResultType::Matched);
+                } else if (seed == "random-device") {
+                    config.rngSeed = generateRandomSeed(GenerateFrom::RandomDevice);
+                    return ParserResult::ok(ParseResultType::Matched);</span>
+                }
+
+                // TODO: ideally we should be parsing uint32_t directly
+                //       fix this later when we add new parse overload
+<span style = "background-color:#fdd">                auto parsedSeed = parseUInt( seed, 0 );
+                if ( !parsedSeed ) {
+                    return ParserResult::runtimeError( "Could not parse '" + seed + "' as seed" );</span>
+                }
+<span style = "background-color:#fdd">                config.rngSeed = *parsedSeed;
+                return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">            };</span>
+        auto const setDefaultColourMode = [&amp;]( std::string const&amp; colourMode ) {
+<span style = "background-color:#fdd">            Optional&lt;ColourMode&gt; maybeMode = Catch::Detail::stringToColourMode(toLower( colourMode ));
+            if ( !maybeMode ) {
+                return ParserResult::runtimeError(</span>
+                    "colour mode must be one of: default, ansi, win32, "
+                    "or none. '" +
+                    colourMode + "' is not recognised" );
+            }
+<span style = "background-color:#fdd">            auto mode = *maybeMode;
+            if ( !isColourImplAvailable( mode ) ) {
+                return ParserResult::runtimeError(</span>
+                    "colour mode '" + colourMode +
+                    "' is not supported in this binary" );
+            }
+<span style = "background-color:#fdd">            config.defaultColourMode = mode;
+            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">        };</span>
+        auto const setWaitForKeypress = [&amp;]( std::string const&amp; keypress ) {
+<span style = "background-color:#fdd">                auto keypressLc = toLower( keypress );
+                if (keypressLc == "never")
+                    config.waitForKeypress = WaitForKeypress::Never;
+                else if( keypressLc == "start" )
+                    config.waitForKeypress = WaitForKeypress::BeforeStart;
+                else if( keypressLc == "exit" )
+                    config.waitForKeypress = WaitForKeypress::BeforeExit;
+                else if( keypressLc == "both" )
+                    config.waitForKeypress = WaitForKeypress::BeforeStartAndExit;</span>
+                else
+<span style = "background-color:#fdd">                    return ParserResult::runtimeError( "keypress argument must be one of: never, start, exit or both. '" + keypress + "' not recognised" );
+            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">            };</span>
+        auto const setVerbosity = [&amp;]( std::string const&amp; verbosity ) {
+<span style = "background-color:#fdd">            auto lcVerbosity = toLower( verbosity );
+            if( lcVerbosity == "quiet" )
+                config.verbosity = Verbosity::Quiet;
+            else if( lcVerbosity == "normal" )
+                config.verbosity = Verbosity::Normal;
+            else if( lcVerbosity == "high" )
+                config.verbosity = Verbosity::High;</span>
+            else
+<span style = "background-color:#fdd">                return ParserResult::runtimeError( "Unrecognised verbosity, '" + verbosity + '\'' );
+            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">        };</span>
+        auto const setReporter = [&amp;]( std::string const&amp; userReporterSpec ) {
+<span style = "background-color:#fdd">            if ( userReporterSpec.empty() ) {
+                return ParserResult::runtimeError( "Received empty reporter spec." );</span>
+            }
+
+<span style = "background-color:#fdd">            Optional&lt;ReporterSpec&gt; parsed =</span>
+                parseReporterSpec( userReporterSpec );
+<span style = "background-color:#fdd">            if ( !parsed ) {
+                return ParserResult::runtimeError(</span>
+                    "Could not parse reporter spec '" + userReporterSpec +
+                    "'" );
+            }
+
+<span style = "background-color:#fdd">            auto const&amp; reporterSpec = *parsed;</span>
+
+<span style = "background-color:#fdd">            auto const&amp; factories =</span>
+                getRegistryHub().getReporterRegistry().getFactories();
+<span style = "background-color:#fdd">            auto result = factories.find( reporterSpec.name() );</span>
+
+<span style = "background-color:#fdd">            if ( result == factories.end() ) {
+                return ParserResult::runtimeError(</span>
+                    "Unrecognized reporter, '" + reporterSpec.name() +
+                    "'. Check available with --list-reporters" );
+            }
+
+
+<span style = "background-color:#fdd">            const bool hadOutputFile = reporterSpec.outputFile().some();
+            config.reporterSpecifications.push_back( CATCH_MOVE( *parsed ) );</span>
+            // It would be enough to check this only once at the very end, but
+            // there is  not a place where we could call this check, so do it
+            // every time it could fail. For valid inputs, this is still called
+            // at most once.
+<span style = "background-color:#fdd">            if (!hadOutputFile) {
+                int n_reporters_without_file = 0;
+                for (auto const&amp; spec : config.reporterSpecifications) {
+                    if (spec.outputFile().none()) {
+                        n_reporters_without_file++;</span>
+                    }
+<span style = "background-color:#fdd">                }
+                if (n_reporters_without_file &gt; 1) {
+                    return ParserResult::runtimeError( "Only one reporter may have unspecified output file." );</span>
+                }
+            }
+
+<span style = "background-color:#fdd">            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">        };</span>
+        auto const setShardCount = [&amp;]( std::string const&amp; shardCount ) {
+<span style = "background-color:#fdd">            auto parsedCount = parseUInt( shardCount );
+            if ( !parsedCount ) {
+                return ParserResult::runtimeError(</span>
+                    "Could not parse '" + shardCount + "' as shard count" );
+            }
+<span style = "background-color:#fdd">            if ( *parsedCount == 0 ) {
+                return ParserResult::runtimeError(</span>
+                    "Shard count must be positive" );
+            }
+<span style = "background-color:#fdd">            config.shardCount = *parsedCount;
+            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">        };</span>
+
+        auto const setShardIndex = [&amp;](std::string const&amp; shardIndex) {
+<span style = "background-color:#fdd">            auto parsedIndex = parseUInt( shardIndex );
+            if ( !parsedIndex ) {
+                return ParserResult::runtimeError(</span>
+                    "Could not parse '" + shardIndex + "' as shard index" );
+            }
+<span style = "background-color:#fdd">            config.shardIndex = *parsedIndex;
+            return ParserResult::ok( ParseResultType::Matched );</span>
+<span style = "background-color:#dfd">        };</span>
+
+        auto cli
+<span style = "background-color:#dfd">            = ExeName( config.processName )</span>
+            | Help( config.showHelp )
+            | Opt( config.showSuccessfulTests )
+                ["-s"]["--success"]
+                ( "include successful tests in output" )
+            | Opt( config.shouldDebugBreak )
+                ["-b"]["--break"]
+                ( "break into debugger on failure" )
+            | Opt( config.noThrow )
+                ["-e"]["--nothrow"]
+                ( "skip exception tests" )
+            | Opt( config.showInvisibles )
+                ["-i"]["--invisibles"]
+                ( "show invisibles (tabs, newlines)" )
+            | Opt( config.defaultOutputFilename, "filename" )
+                ["-o"]["--out"]
+                ( "default output filename" )
+            | Opt( accept_many, setReporter, "name[::key=value]*" )
+                ["-r"]["--reporter"]
+                ( "reporter to use (defaults to console)" )
+            | Opt( config.name, "name" )
+                ["-n"]["--name"]
+                ( "suite name" )
+<span style = "background-color:#dfd">            | Opt( [&amp;]( bool ){ config.abortAfter = 1; } )</span>
+                ["-a"]["--abort"]
+                ( "abort at first failure" )
+<span style = "background-color:#dfd">            | Opt( [&amp;]( int x ){ config.abortAfter = x; }, "no. failures" )</span>
+                ["-x"]["--abortx"]
+                ( "abort after x failures" )
+            | Opt( accept_many, setWarning, "warning name" )
+                ["-w"]["--warn"]
+                ( "enable warnings" )
+<span style = "background-color:#dfd">            | Opt( [&amp;]( bool flag ) { config.showDurations = flag ? ShowDurations::Always : ShowDurations::Never; }, "yes|no" )</span>
+                ["-d"]["--durations"]
+                ( "show test durations" )
+            | Opt( config.minDuration, "seconds" )
+                ["-D"]["--min-duration"]
+                ( "show test durations for tests taking at least the given number of seconds" )
+            | Opt( loadTestNamesFromFile, "filename" )
+                ["-f"]["--input-file"]
+                ( "load test names to run from a file" )
+            | Opt( config.filenamesAsTags )
+                ["-#"]["--filenames-as-tags"]
+                ( "adds a tag for the filename" )
+            | Opt( config.sectionsToRun, "section name" )
+                ["-c"]["--section"]
+                ( "specify section to run" )
+            | Opt( setVerbosity, "quiet|normal|high" )
+                ["-v"]["--verbosity"]
+                ( "set output verbosity" )
+            | Opt( config.listTests )
+                ["--list-tests"]
+                ( "list all/matching test cases" )
+            | Opt( config.listTags )
+                ["--list-tags"]
+                ( "list all/matching tags" )
+            | Opt( config.listReporters )
+                ["--list-reporters"]
+                ( "list all available reporters" )
+            | Opt( config.listListeners )
+                ["--list-listeners"]
+                ( "list all listeners" )
+            | Opt( setTestOrder, "decl|lex|rand" )
+                ["--order"]
+                ( "test case order (defaults to decl)" )
+            | Opt( setRngSeed, "'time'|'random-device'|number" )
+                ["--rng-seed"]
+                ( "set a specific seed for random numbers" )
+            | Opt( setDefaultColourMode, "ansi|win32|none|default" )
+                ["--colour-mode"]
+                ( "what color mode should be used as default" )
+            | Opt( config.libIdentify )
+                ["--libidentify"]
+                ( "report name and version according to libidentify standard" )
+            | Opt( setWaitForKeypress, "never|start|exit|both" )
+                ["--wait-for-keypress"]
+                ( "waits for a keypress before exiting" )
+            | Opt( config.skipBenchmarks)
+                ["--skip-benchmarks"]
+                ( "disable running benchmarks")
+            | Opt( config.benchmarkSamples, "samples" )
+                ["--benchmark-samples"]
+                ( "number of samples to collect (default: 100)" )
+            | Opt( config.benchmarkResamples, "resamples" )
+                ["--benchmark-resamples"]
+                ( "number of resamples for the bootstrap (default: 100000)" )
+            | Opt( config.benchmarkConfidenceInterval, "confidence interval" )
+                ["--benchmark-confidence-interval"]
+                ( "confidence interval for the bootstrap (between 0 and 1, default: 0.95)" )
+            | Opt( config.benchmarkNoAnalysis )
+                ["--benchmark-no-analysis"]
+                ( "perform only measurements; do not perform any analysis" )
+            | Opt( config.benchmarkWarmupTime, "benchmarkWarmupTime" )
+                ["--benchmark-warmup-time"]
+                ( "amount of time in milliseconds spent on warming up each test (default: 100)" )
+            | Opt( setShardCount, "shard count" )
+                ["--shard-count"]
+                ( "split the tests to execute into this many groups" )
+            | Opt( setShardIndex, "shard index" )
+                ["--shard-index"]
+                ( "index of the group of tests to execute (see --shard-count)" )
+            | Opt( config.allowZeroTests )
+                ["--allow-running-no-tests"]
+                ( "Treat 'No tests run' as a success" )
+            | Arg( config.testsOrTags, "test name|pattern|tags" )
+                ( "which test or tests to use" );
+
+<span style = "background-color:#dfd">        return cli;
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

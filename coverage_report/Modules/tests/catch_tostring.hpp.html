@@ -1,0 +1,700 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_tostring.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_TOSTRING_HPP_INCLUDED
+#define CATCH_TOSTRING_HPP_INCLUDED
+
+
+#include &lt;vector&gt;
+#include &lt;cstddef&gt;
+#include &lt;type_traits&gt;
+#include &lt;string&gt;
+
+#include &lt;catch2/internal/catch_compiler_capabilities.hpp&gt;
+#include &lt;catch2/internal/catch_config_wchar.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_void_type.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_enum_values_registry.hpp&gt;
+
+#ifdef CATCH_CONFIG_CPP17_STRING_VIEW
+#include &lt;string_view&gt;
+#endif
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4180) // We attempt to stream a function (address) by const&amp;, which MSVC complains about but is harmless
+#endif
+
+// We need a dummy global operator&lt;&lt; so we can bring it into Catch namespace later
+struct Catch_global_namespace_dummy{};
+std::ostream&amp; operator&lt;&lt;(std::ostream&amp;, Catch_global_namespace_dummy);
+
+namespace Catch {
+    // Bring in global namespace operator&lt;&lt; for ADL lookup in
+    // `IsStreamInsertable` below.
+    using ::operator&lt;&lt;;
+
+    namespace Detail {
+
+<span style = "background-color:#fdd">        inline std::size_t catch_strnlen(const char *str, std::size_t n) {
+            auto ret = std::char_traits&lt;char&gt;::find(str, n, '\0');
+            if (ret != nullptr) {
+                return static_cast&lt;std::size_t&gt;(ret - str);</span>
+            }
+<span style = "background-color:#fdd">            return n;
+        }</span>
+
+        constexpr StringRef unprintableString = "{?}"_sr;
+
+        //! Encases `string in quotes, and optionally escapes invisibles
+        std::string convertIntoString( StringRef string, bool escapeInvisibles );
+
+        //! Encases `string` in quotes, and escapes invisibles if user requested
+        //! it via CLI
+        std::string convertIntoString( StringRef string );
+
+        std::string rawMemoryToString( const void *object, std::size_t size );
+
+        template&lt;typename T&gt;
+        std::string rawMemoryToString( const T&amp; object ) {
+          return rawMemoryToString( &amp;object, sizeof(object) );
+        }
+
+        template&lt;typename T&gt;
+        class IsStreamInsertable {
+            template&lt;typename Stream, typename U&gt;
+            static auto test(int)
+                -&gt; decltype(std::declval&lt;Stream&amp;&gt;() &lt;&lt; std::declval&lt;U&gt;(), std::true_type());
+
+            template&lt;typename, typename&gt;
+            static auto test(...)-&gt;std::false_type;
+
+        public:
+            static const bool value = decltype(test&lt;std::ostream, const T&amp;&gt;(0))::value;
+        };
+
+        template&lt;typename E&gt;
+        std::string convertUnknownEnumToString( E e );
+
+        template&lt;typename T&gt;
+        std::enable_if_t&lt;
+            !std::is_enum&lt;T&gt;::value &amp;&amp; !std::is_base_of&lt;std::exception, T&gt;::value,
+        std::string&gt; convertUnstreamable( T const&amp; ) {
+            return std::string(Detail::unprintableString);
+        }
+        template&lt;typename T&gt;
+        std::enable_if_t&lt;
+            !std::is_enum&lt;T&gt;::value &amp;&amp; std::is_base_of&lt;std::exception, T&gt;::value,
+         std::string&gt; convertUnstreamable(T const&amp; ex) {
+            return ex.what();
+        }
+
+
+        template&lt;typename T&gt;
+        std::enable_if_t&lt;
+            std::is_enum&lt;T&gt;::value,
+<span style = "background-color:#fdd">        std::string&gt; convertUnstreamable( T const&amp; value ) {
+            return convertUnknownEnumToString( value );
+        }</span>
+
+#if defined(_MANAGED)
+        //! Convert a CLR string to a utf8 std::string
+        template&lt;typename T&gt;
+        std::string clrReferenceToString( T^ ref ) {
+            if (ref == nullptr)
+                return std::string("null");
+            auto bytes = System::Text::Encoding::UTF8-&gt;GetBytes(ref-&gt;ToString());
+            cli::pin_ptr&lt;System::Byte&gt; p = &amp;bytes[0];
+            return std::string(reinterpret_cast&lt;char const *&gt;(p), bytes-&gt;Length);
+        }
+#endif
+
+    } // namespace Detail
+
+
+    template &lt;typename T, typename = void&gt;
+    struct StringMaker {
+        template &lt;typename Fake = T&gt;
+        static
+        std::enable_if_t&lt;::Catch::Detail::IsStreamInsertable&lt;Fake&gt;::value, std::string&gt;
+<span style = "background-color:#fdd">            convert(const Fake&amp; value) {
+                ReusableStringStream rss;</span>
+                // NB: call using the function-like syntax to avoid ambiguity with
+                // user-defined templated operator&lt;&lt; under clang.
+<span style = "background-color:#fdd">                rss.operator&lt;&lt;(value);
+                return rss.str();
+        }</span>
+
+        template &lt;typename Fake = T&gt;
+        static
+        std::enable_if_t&lt;!::Catch::Detail::IsStreamInsertable&lt;Fake&gt;::value, std::string&gt;
+<span style = "background-color:#fdd">            convert( const Fake&amp; value ) {</span>
+#if !defined(CATCH_CONFIG_FALLBACK_STRINGIFIER)
+<span style = "background-color:#fdd">            return Detail::convertUnstreamable(value);</span>
+#else
+            return CATCH_CONFIG_FALLBACK_STRINGIFIER(value);
+#endif
+<span style = "background-color:#fdd">        }</span>
+    };
+
+    namespace Detail {
+
+        // This function dispatches all stringification requests inside of Catch.
+        // Should be preferably called fully qualified, like ::Catch::Detail::stringify
+        template &lt;typename T&gt;
+<span style = "background-color:#fdd">        std::string stringify(const T&amp; e) {
+            return ::Catch::StringMaker&lt;std::remove_cv_t&lt;std::remove_reference_t&lt;T&gt;&gt;&gt;::convert(e);
+        }</span>
+
+        template&lt;typename E&gt;
+<span style = "background-color:#fdd">        std::string convertUnknownEnumToString( E e ) {
+            return ::Catch::Detail::stringify(static_cast&lt;std::underlying_type_t&lt;E&gt;&gt;(e));
+        }</span>
+
+#if defined(_MANAGED)
+        template &lt;typename T&gt;
+        std::string stringify( T^ e ) {
+            return ::Catch::StringMaker&lt;T^&gt;::convert(e);
+        }
+#endif
+
+    } // namespace Detail
+
+    // Some predefined specializations
+
+    template&lt;&gt;
+    struct StringMaker&lt;std::string&gt; {
+        static std::string convert(const std::string&amp; str);
+    };
+
+#ifdef CATCH_CONFIG_CPP17_STRING_VIEW
+    template&lt;&gt;
+    struct StringMaker&lt;std::string_view&gt; {
+        static std::string convert(std::string_view str);
+    };
+#endif
+
+    template&lt;&gt;
+    struct StringMaker&lt;char const *&gt; {
+        static std::string convert(char const * str);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;char *&gt; {
+        static std::string convert(char * str);
+    };
+
+#if defined(CATCH_CONFIG_WCHAR)
+    template&lt;&gt;
+    struct StringMaker&lt;std::wstring&gt; {
+        static std::string convert(const std::wstring&amp; wstr);
+    };
+
+# ifdef CATCH_CONFIG_CPP17_STRING_VIEW
+    template&lt;&gt;
+    struct StringMaker&lt;std::wstring_view&gt; {
+        static std::string convert(std::wstring_view str);
+    };
+# endif
+
+    template&lt;&gt;
+    struct StringMaker&lt;wchar_t const *&gt; {
+        static std::string convert(wchar_t const * str);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;wchar_t *&gt; {
+        static std::string convert(wchar_t * str);
+    };
+#endif // CATCH_CONFIG_WCHAR
+
+    template&lt;size_t SZ&gt;
+    struct StringMaker&lt;char[SZ]&gt; {
+<span style = "background-color:#fdd">        static std::string convert(char const* str) {
+            return Detail::convertIntoString(</span>
+                StringRef( str, Detail::catch_strnlen( str, SZ ) ) );
+<span style = "background-color:#fdd">        }</span>
+    };
+    template&lt;size_t SZ&gt;
+    struct StringMaker&lt;signed char[SZ]&gt; {
+        static std::string convert(signed char const* str) {
+            auto reinterpreted = reinterpret_cast&lt;char const*&gt;(str);
+            return Detail::convertIntoString(
+                StringRef(reinterpreted, Detail::catch_strnlen(reinterpreted, SZ)));
+        }
+    };
+    template&lt;size_t SZ&gt;
+    struct StringMaker&lt;unsigned char[SZ]&gt; {
+        static std::string convert(unsigned char const* str) {
+            auto reinterpreted = reinterpret_cast&lt;char const*&gt;(str);
+            return Detail::convertIntoString(
+                StringRef(reinterpreted, Detail::catch_strnlen(reinterpreted, SZ)));
+        }
+    };
+
+#if defined(CATCH_CONFIG_CPP17_BYTE)
+    template&lt;&gt;
+    struct StringMaker&lt;std::byte&gt; {
+        static std::string convert(std::byte value);
+    };
+#endif // defined(CATCH_CONFIG_CPP17_BYTE)
+    template&lt;&gt;
+    struct StringMaker&lt;int&gt; {
+        static std::string convert(int value);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;long&gt; {
+        static std::string convert(long value);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;long long&gt; {
+        static std::string convert(long long value);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;unsigned int&gt; {
+        static std::string convert(unsigned int value);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;unsigned long&gt; {
+        static std::string convert(unsigned long value);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;unsigned long long&gt; {
+        static std::string convert(unsigned long long value);
+    };
+
+    template&lt;&gt;
+    struct StringMaker&lt;bool&gt; {
+<span style = "background-color:#fdd">        static std::string convert(bool b) {</span>
+            using namespace std::string_literals;
+<span style = "background-color:#fdd">            return b ? "true"s : "false"s;
+        }</span>
+    };
+
+    template&lt;&gt;
+    struct StringMaker&lt;char&gt; {
+        static std::string convert(char c);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;signed char&gt; {
+        static std::string convert(signed char c);
+    };
+    template&lt;&gt;
+    struct StringMaker&lt;unsigned char&gt; {
+        static std::string convert(unsigned char c);
+    };
+
+    template&lt;&gt;
+    struct StringMaker&lt;std::nullptr_t&gt; {
+        static std::string convert(std::nullptr_t) {
+            using namespace std::string_literals;
+            return "nullptr"s;
+        }
+    };
+
+    template&lt;&gt;
+    struct StringMaker&lt;float&gt; {
+        static std::string convert(float value);
+        CATCH_EXPORT static int precision;
+    };
+
+    template&lt;&gt;
+    struct StringMaker&lt;double&gt; {
+        static std::string convert(double value);
+        CATCH_EXPORT static int precision;
+    };
+
+    template &lt;typename T&gt;
+    struct StringMaker&lt;T*&gt; {
+        template &lt;typename U&gt;
+        static std::string convert(U* p) {
+            if (p) {
+                return ::Catch::Detail::rawMemoryToString(p);
+            } else {
+                return "nullptr";
+            }
+        }
+    };
+
+    template &lt;typename R, typename C&gt;
+    struct StringMaker&lt;R C::*&gt; {
+        static std::string convert(R C::* p) {
+            if (p) {
+                return ::Catch::Detail::rawMemoryToString(p);
+            } else {
+                return "nullptr";
+            }
+        }
+    };
+
+#if defined(_MANAGED)
+    template &lt;typename T&gt;
+    struct StringMaker&lt;T^&gt; {
+        static std::string convert( T^ ref ) {
+            return ::Catch::Detail::clrReferenceToString(ref);
+        }
+    };
+#endif
+
+    namespace Detail {
+        template&lt;typename InputIterator, typename Sentinel = InputIterator&gt;
+        std::string rangeToString(InputIterator first, Sentinel last) {
+            ReusableStringStream rss;
+            rss &lt;&lt; "{ ";
+            if (first != last) {
+                rss &lt;&lt; ::Catch::Detail::stringify(*first);
+                for (++first; first != last; ++first)
+                    rss &lt;&lt; ", " &lt;&lt; ::Catch::Detail::stringify(*first);
+            }
+            rss &lt;&lt; " }";
+            return rss.str();
+        }
+    }
+
+} // namespace Catch
+
+//////////////////////////////////////////////////////
+// Separate std-lib types stringification, so it can be selectively enabled
+// This means that we do not bring in their headers
+
+#if defined(CATCH_CONFIG_ENABLE_ALL_STRINGMAKERS)
+#  define CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER
+#  define CATCH_CONFIG_ENABLE_TUPLE_STRINGMAKER
+#  define CATCH_CONFIG_ENABLE_VARIANT_STRINGMAKER
+#  define CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER
+#endif
+
+// Separate std::pair specialization
+#if defined(CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER)
+#include &lt;utility&gt;
+namespace Catch {
+    template&lt;typename T1, typename T2&gt;
+    struct StringMaker&lt;std::pair&lt;T1, T2&gt; &gt; {
+        static std::string convert(const std::pair&lt;T1, T2&gt;&amp; pair) {
+            ReusableStringStream rss;
+            rss &lt;&lt; "{ "
+                &lt;&lt; ::Catch::Detail::stringify(pair.first)
+                &lt;&lt; ", "
+                &lt;&lt; ::Catch::Detail::stringify(pair.second)
+                &lt;&lt; " }";
+            return rss.str();
+        }
+    };
+}
+#endif // CATCH_CONFIG_ENABLE_PAIR_STRINGMAKER
+
+#if defined(CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER) &amp;&amp; defined(CATCH_CONFIG_CPP17_OPTIONAL)
+#include &lt;optional&gt;
+namespace Catch {
+    template&lt;typename T&gt;
+    struct StringMaker&lt;std::optional&lt;T&gt; &gt; {
+        static std::string convert(const std::optional&lt;T&gt;&amp; optional) {
+            if (optional.has_value()) {
+                return ::Catch::Detail::stringify(*optional);
+            } else {
+                return "{ }";
+            }
+        }
+    };
+    template &lt;&gt;
+    struct StringMaker&lt;std::nullopt_t&gt; {
+        static std::string convert(const std::nullopt_t&amp;) {
+            return "{ }";
+        }
+    };
+}
+#endif // CATCH_CONFIG_ENABLE_OPTIONAL_STRINGMAKER
+
+// Separate std::tuple specialization
+#if defined(CATCH_CONFIG_ENABLE_TUPLE_STRINGMAKER)
+#include &lt;tuple&gt;
+namespace Catch {
+    namespace Detail {
+        template&lt;
+            typename Tuple,
+            std::size_t N = 0,
+            bool = (N &lt; std::tuple_size&lt;Tuple&gt;::value)
+            &gt;
+            struct TupleElementPrinter {
+            static void print(const Tuple&amp; tuple, std::ostream&amp; os) {
+                os &lt;&lt; (N ? ", " : " ")
+                    &lt;&lt; ::Catch::Detail::stringify(std::get&lt;N&gt;(tuple));
+                TupleElementPrinter&lt;Tuple, N + 1&gt;::print(tuple, os);
+            }
+        };
+
+        template&lt;
+            typename Tuple,
+            std::size_t N
+        &gt;
+            struct TupleElementPrinter&lt;Tuple, N, false&gt; {
+            static void print(const Tuple&amp;, std::ostream&amp;) {}
+        };
+
+    }
+
+
+    template&lt;typename ...Types&gt;
+    struct StringMaker&lt;std::tuple&lt;Types...&gt;&gt; {
+        static std::string convert(const std::tuple&lt;Types...&gt;&amp; tuple) {
+            ReusableStringStream rss;
+            rss &lt;&lt; '{';
+            Detail::TupleElementPrinter&lt;std::tuple&lt;Types...&gt;&gt;::print(tuple, rss.get());
+            rss &lt;&lt; " }";
+            return rss.str();
+        }
+    };
+}
+#endif // CATCH_CONFIG_ENABLE_TUPLE_STRINGMAKER
+
+#if defined(CATCH_CONFIG_ENABLE_VARIANT_STRINGMAKER) &amp;&amp; defined(CATCH_CONFIG_CPP17_VARIANT)
+#include &lt;variant&gt;
+namespace Catch {
+    template&lt;&gt;
+    struct StringMaker&lt;std::monostate&gt; {
+        static std::string convert(const std::monostate&amp;) {
+            return "{ }";
+        }
+    };
+
+    template&lt;typename... Elements&gt;
+    struct StringMaker&lt;std::variant&lt;Elements...&gt;&gt; {
+        static std::string convert(const std::variant&lt;Elements...&gt;&amp; variant) {
+            if (variant.valueless_by_exception()) {
+                return "{valueless variant}";
+            } else {
+                return std::visit(
+                    [](const auto&amp; value) {
+                        return ::Catch::Detail::stringify(value);
+                    },
+                    variant
+                );
+            }
+        }
+    };
+}
+#endif // CATCH_CONFIG_ENABLE_VARIANT_STRINGMAKER
+
+namespace Catch {
+    // Import begin/ end from std here
+    using std::begin;
+    using std::end;
+
+    namespace Detail {
+        template &lt;typename T, typename = void&gt;
+        struct is_range_impl : std::false_type {};
+
+        template &lt;typename T&gt;
+        struct is_range_impl&lt;T, void_t&lt;decltype(begin(std::declval&lt;T&gt;()))&gt;&gt; : std::true_type {};
+    } // namespace Detail
+
+    template &lt;typename T&gt;
+    struct is_range : Detail::is_range_impl&lt;T&gt; {};
+
+#if defined(_MANAGED) // Managed types are never ranges
+    template &lt;typename T&gt;
+    struct is_range&lt;T^&gt; {
+        static const bool value = false;
+    };
+#endif
+
+    template&lt;typename Range&gt;
+    std::string rangeToString( Range const&amp; range ) {
+        return ::Catch::Detail::rangeToString( begin( range ), end( range ) );
+    }
+
+    // Handle vector&lt;bool&gt; specially
+    template&lt;typename Allocator&gt;
+    std::string rangeToString( std::vector&lt;bool, Allocator&gt; const&amp; v ) {
+        ReusableStringStream rss;
+        rss &lt;&lt; "{ ";
+        bool first = true;
+        for( bool b : v ) {
+            if( first )
+                first = false;
+            else
+                rss &lt;&lt; ", ";
+            rss &lt;&lt; ::Catch::Detail::stringify( b );
+        }
+        rss &lt;&lt; " }";
+        return rss.str();
+    }
+
+    template&lt;typename R&gt;
+    struct StringMaker&lt;R, std::enable_if_t&lt;is_range&lt;R&gt;::value &amp;&amp; !::Catch::Detail::IsStreamInsertable&lt;R&gt;::value&gt;&gt; {
+        static std::string convert( R const&amp; range ) {
+            return rangeToString( range );
+        }
+    };
+
+    template &lt;typename T, size_t SZ&gt;
+    struct StringMaker&lt;T[SZ]&gt; {
+        static std::string convert(T const(&amp;arr)[SZ]) {
+            return rangeToString(arr);
+        }
+    };
+
+
+} // namespace Catch
+
+// Separate std::chrono::duration specialization
+#include &lt;ctime&gt;
+#include &lt;ratio&gt;
+#include &lt;chrono&gt;
+
+
+namespace Catch {
+
+template &lt;class Ratio&gt;
+struct ratio_string {
+    static std::string symbol() {
+        Catch::ReusableStringStream rss;
+        rss &lt;&lt; '[' &lt;&lt; Ratio::num &lt;&lt; '/'
+            &lt;&lt; Ratio::den &lt;&lt; ']';
+        return rss.str();
+    }
+};
+
+template &lt;&gt;
+struct ratio_string&lt;std::atto&gt; {
+    static char symbol() { return 'a'; }
+};
+template &lt;&gt;
+struct ratio_string&lt;std::femto&gt; {
+    static char symbol() { return 'f'; }
+};
+template &lt;&gt;
+struct ratio_string&lt;std::pico&gt; {
+    static char symbol() { return 'p'; }
+};
+template &lt;&gt;
+struct ratio_string&lt;std::nano&gt; {
+    static char symbol() { return 'n'; }
+};
+template &lt;&gt;
+struct ratio_string&lt;std::micro&gt; {
+    static char symbol() { return 'u'; }
+};
+template &lt;&gt;
+struct ratio_string&lt;std::milli&gt; {
+    static char symbol() { return 'm'; }
+};
+
+    ////////////
+    // std::chrono::duration specializations
+    template&lt;typename Value, typename Ratio&gt;
+    struct StringMaker&lt;std::chrono::duration&lt;Value, Ratio&gt;&gt; {
+        static std::string convert(std::chrono::duration&lt;Value, Ratio&gt; const&amp; duration) {
+            ReusableStringStream rss;
+            rss &lt;&lt; duration.count() &lt;&lt; ' ' &lt;&lt; ratio_string&lt;Ratio&gt;::symbol() &lt;&lt; 's';
+            return rss.str();
+        }
+    };
+    template&lt;typename Value&gt;
+    struct StringMaker&lt;std::chrono::duration&lt;Value, std::ratio&lt;1&gt;&gt;&gt; {
+        static std::string convert(std::chrono::duration&lt;Value, std::ratio&lt;1&gt;&gt; const&amp; duration) {
+            ReusableStringStream rss;
+            rss &lt;&lt; duration.count() &lt;&lt; " s";
+            return rss.str();
+        }
+    };
+    template&lt;typename Value&gt;
+    struct StringMaker&lt;std::chrono::duration&lt;Value, std::ratio&lt;60&gt;&gt;&gt; {
+        static std::string convert(std::chrono::duration&lt;Value, std::ratio&lt;60&gt;&gt; const&amp; duration) {
+            ReusableStringStream rss;
+            rss &lt;&lt; duration.count() &lt;&lt; " m";
+            return rss.str();
+        }
+    };
+    template&lt;typename Value&gt;
+    struct StringMaker&lt;std::chrono::duration&lt;Value, std::ratio&lt;3600&gt;&gt;&gt; {
+        static std::string convert(std::chrono::duration&lt;Value, std::ratio&lt;3600&gt;&gt; const&amp; duration) {
+            ReusableStringStream rss;
+            rss &lt;&lt; duration.count() &lt;&lt; " h";
+            return rss.str();
+        }
+    };
+
+    ////////////
+    // std::chrono::time_point specialization
+    // Generic time_point cannot be specialized, only std::chrono::time_point&lt;system_clock&gt;
+    template&lt;typename Clock, typename Duration&gt;
+    struct StringMaker&lt;std::chrono::time_point&lt;Clock, Duration&gt;&gt; {
+        static std::string convert(std::chrono::time_point&lt;Clock, Duration&gt; const&amp; time_point) {
+            return ::Catch::Detail::stringify(time_point.time_since_epoch()) + " since epoch";
+        }
+    };
+    // std::chrono::time_point&lt;system_clock&gt; specialization
+    template&lt;typename Duration&gt;
+    struct StringMaker&lt;std::chrono::time_point&lt;std::chrono::system_clock, Duration&gt;&gt; {
+        static std::string convert(std::chrono::time_point&lt;std::chrono::system_clock, Duration&gt; const&amp; time_point) {
+            auto converted = std::chrono::system_clock::to_time_t(time_point);
+
+#ifdef _MSC_VER
+            std::tm timeInfo = {};
+            gmtime_s(&amp;timeInfo, &amp;converted);
+#else
+            std::tm* timeInfo = std::gmtime(&amp;converted);
+#endif
+
+            auto const timeStampSize = sizeof("2017-01-16T17:06:45Z");
+            char timeStamp[timeStampSize];
+            const char * const fmt = "%Y-%m-%dT%H:%M:%SZ";
+
+#ifdef _MSC_VER
+            std::strftime(timeStamp, timeStampSize, fmt, &amp;timeInfo);
+#else
+            std::strftime(timeStamp, timeStampSize, fmt, timeInfo);
+#endif
+            return std::string(timeStamp, timeStampSize - 1);
+        }
+    };
+}
+
+#include &lt;catch2/interfaces/catch_interfaces_registry_hub.hpp&gt;
+
+#define INTERNAL_CATCH_REGISTER_ENUM( enumName, ... ) \
+namespace Catch { \
+    template&lt;&gt; struct StringMaker&lt;enumName&gt; { \
+        static std::string convert( enumName value ) { \
+            static const auto&amp; enumInfo = ::Catch::getMutableRegistryHub().getMutableEnumValuesRegistry().registerEnum( #enumName, #__VA_ARGS__, { __VA_ARGS__ } ); \
+            return static_cast&lt;std::string&gt;(enumInfo.lookup( static_cast&lt;int&gt;( value ) )); \
+        } \
+    }; \
+}
+
+#define CATCH_REGISTER_ENUM( enumName, ... ) INTERNAL_CATCH_REGISTER_ENUM( enumName, __VA_ARGS__ )
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+
+#endif // CATCH_TOSTRING_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

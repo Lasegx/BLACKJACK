@@ -1,0 +1,265 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_case_tracker.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_test_case_tracker.hpp&gt;
+
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;cassert&gt;
+
+#if defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wexit-time-destructors"
+#endif
+
+namespace Catch {
+namespace TestCaseTracking {
+
+    NameAndLocation::NameAndLocation( std::string&amp;&amp; _name, SourceLineInfo const&amp; _location )
+<span style = "background-color:#dfd">    :   name( CATCH_MOVE(_name) ),
+        location( _location )
+    {}</span>
+
+
+<span style = "background-color:#dfd">    ITracker::~ITracker() = default;</span>
+
+<span style = "background-color:#fdd">    void ITracker::markAsNeedingAnotherRun() {
+        m_runState = NeedsAnotherRun;
+    }</span>
+
+<span style = "background-color:#dfd">    void ITracker::addChild( ITrackerPtr&amp;&amp; child ) {
+        m_children.push_back( CATCH_MOVE(child) );
+    }</span>
+
+<span style = "background-color:#dfd">    ITracker* ITracker::findChild( NameAndLocationRef const&amp; nameAndLocation ) {
+        auto it = std::find_if(</span>
+            m_children.begin(),
+            m_children.end(),
+            [&amp;nameAndLocation]( ITrackerPtr const&amp; tracker ) {
+<span style = "background-color:#fdd">                auto const&amp; tnameAndLoc = tracker-&gt;nameAndLocation();
+                if ( tnameAndLoc.location.line !=</span>
+                     nameAndLocation.location.line ) {
+<span style = "background-color:#fdd">                    return false;</span>
+                }
+<span style = "background-color:#fdd">                return tnameAndLoc == nameAndLocation;</span>
+<span style = "background-color:#dfd">            } );
+        return ( it != m_children.end() ) ? it-&gt;get() : nullptr;
+    }</span>
+
+<span style = "background-color:#fdd">    bool ITracker::isSectionTracker() const { return false; }
+    bool ITracker::isGeneratorTracker() const { return false; }</span>
+
+<span style = "background-color:#fdd">    bool ITracker::isOpen() const {
+        return m_runState != NotStarted &amp;&amp; !isComplete();
+    }</span>
+
+<span style = "background-color:#fdd">    bool ITracker::hasStarted() const { return m_runState != NotStarted; }</span>
+
+<span style = "background-color:#dfd">    void ITracker::openChild() {
+        if (m_runState != ExecutingChildren) {
+            m_runState = ExecutingChildren;
+            if (m_parent) {</span>
+<span style = "background-color:#fdd">                m_parent-&gt;openChild();</span>
+            }
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    ITracker&amp; TrackerContext::startRun() {</span>
+        using namespace std::string_literals;
+<span style = "background-color:#dfd">        m_rootTracker = Catch::Detail::make_unique&lt;SectionTracker&gt;(</span>
+            NameAndLocation( "{root}"s, CATCH_INTERNAL_LINEINFO ),
+            *this,
+            nullptr );
+<span style = "background-color:#dfd">        m_currentTracker = nullptr;
+        m_runState = Executing;
+        return *m_rootTracker;
+    }</span>
+
+<span style = "background-color:#dfd">    void TrackerContext::completeCycle() {
+        m_runState = CompletedCycle;
+    }</span>
+
+<span style = "background-color:#dfd">    bool TrackerContext::completedCycle() const {
+        return m_runState == CompletedCycle;
+    }
+    void TrackerContext::setCurrentTracker( ITracker* tracker ) {
+        m_currentTracker = tracker;
+    }</span>
+
+
+    TrackerBase::TrackerBase( NameAndLocation&amp;&amp; nameAndLocation, TrackerContext&amp; ctx, ITracker* parent ):
+<span style = "background-color:#dfd">        ITracker(CATCH_MOVE(nameAndLocation), parent),
+        m_ctx( ctx )
+    {}</span>
+
+<span style = "background-color:#dfd">    bool TrackerBase::isComplete() const {
+        return m_runState == CompletedSuccessfully || m_runState == Failed;
+    }</span>
+
+<span style = "background-color:#dfd">    void TrackerBase::open() {
+        m_runState = Executing;
+        moveToThis();
+        if( m_parent )
+            m_parent-&gt;openChild();
+    }</span>
+
+<span style = "background-color:#dfd">    void TrackerBase::close() {</span>
+
+        // Close any still open children (e.g. generators)
+<span style = "background-color:#dfd">        while( &amp;m_ctx.currentTracker() != this )</span>
+<span style = "background-color:#fdd">            m_ctx.currentTracker().close();</span>
+
+<span style = "background-color:#dfd">        switch( m_runState ) {</span>
+            case NeedsAnotherRun:
+<span style = "background-color:#fdd">                break;</span>
+
+            case Executing:
+<span style = "background-color:#dfd">                m_runState = CompletedSuccessfully;
+                break;</span>
+            case ExecutingChildren:
+<span style = "background-color:#fdd">                if( std::all_of(m_children.begin(), m_children.end(), [](ITrackerPtr const&amp; t){ return t-&gt;isComplete(); }) )
+                    m_runState = CompletedSuccessfully;
+                break;</span>
+
+            case NotStarted:
+            case CompletedSuccessfully:
+            case Failed:
+<span style = "background-color:#fdd">                CATCH_INTERNAL_ERROR( "Illogical state: " &lt;&lt; m_runState );</span>
+
+            default:
+<span style = "background-color:#fdd">                CATCH_INTERNAL_ERROR( "Unknown state: " &lt;&lt; m_runState );</span>
+        }
+<span style = "background-color:#dfd">        moveToParent();
+        m_ctx.completeCycle();
+    }</span>
+<span style = "background-color:#fdd">    void TrackerBase::fail() {
+        m_runState = Failed;
+        if( m_parent )
+            m_parent-&gt;markAsNeedingAnotherRun();
+        moveToParent();
+        m_ctx.completeCycle();
+    }</span>
+
+<span style = "background-color:#dfd">    void TrackerBase::moveToParent() {
+        assert( m_parent );
+        m_ctx.setCurrentTracker( m_parent );
+    }
+    void TrackerBase::moveToThis() {
+        m_ctx.setCurrentTracker( this );
+    }</span>
+
+    SectionTracker::SectionTracker( NameAndLocation&amp;&amp; nameAndLocation, TrackerContext&amp; ctx, ITracker* parent )
+<span style = "background-color:#dfd">    :   TrackerBase( CATCH_MOVE(nameAndLocation), ctx, parent ),
+        m_trimmed_name(trim(StringRef(ITracker::nameAndLocation().name)))
+    {
+        if( parent ) {
+            while ( !parent-&gt;isSectionTracker() ) {</span>
+<span style = "background-color:#fdd">                parent = parent-&gt;parent();
+            }</span>
+
+<span style = "background-color:#dfd">            SectionTracker&amp; parentSection = static_cast&lt;SectionTracker&amp;&gt;( *parent );
+            addNextFilters( parentSection.m_filters );</span>
+        }
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    bool SectionTracker::isComplete() const {
+        bool complete = true;</span>
+
+        if (m_filters.empty()
+            || m_filters[0].empty()
+<span style = "background-color:#dfd">            || std::find(m_filters.begin(), m_filters.end(), m_trimmed_name) != m_filters.end()) {
+            complete = TrackerBase::isComplete();</span>
+        }
+<span style = "background-color:#dfd">        return complete;
+    }</span>
+
+<span style = "background-color:#dfd">    bool SectionTracker::isSectionTracker() const { return true; }</span>
+
+<span style = "background-color:#dfd">    SectionTracker&amp; SectionTracker::acquire( TrackerContext&amp; ctx, NameAndLocationRef const&amp; nameAndLocation ) {</span>
+        SectionTracker* tracker;
+
+<span style = "background-color:#dfd">        ITracker&amp; currentTracker = ctx.currentTracker();
+        if ( ITracker* childTracker =</span>
+                 currentTracker.findChild( nameAndLocation ) ) {
+<span style = "background-color:#fdd">            assert( childTracker );
+            assert( childTracker-&gt;isSectionTracker() );
+            tracker = static_cast&lt;SectionTracker*&gt;( childTracker );
+        } else {</span>
+<span style = "background-color:#dfd">            auto newTracker = Catch::Detail::make_unique&lt;SectionTracker&gt;(</span>
+                NameAndLocation{ static_cast&lt;std::string&gt;(nameAndLocation.name),
+                                 nameAndLocation.location },
+                ctx,
+                &amp;currentTracker );
+<span style = "background-color:#dfd">            tracker = newTracker.get();
+            currentTracker.addChild( CATCH_MOVE( newTracker ) );
+        }</span>
+
+<span style = "background-color:#dfd">        if ( !ctx.completedCycle() ) {
+            tracker-&gt;tryOpen();</span>
+        }
+
+<span style = "background-color:#dfd">        return *tracker;
+    }</span>
+
+<span style = "background-color:#dfd">    void SectionTracker::tryOpen() {
+        if( !isComplete() )
+            open();
+    }</span>
+
+<span style = "background-color:#dfd">    void SectionTracker::addInitialFilters( std::vector&lt;std::string&gt; const&amp; filters ) {
+        if( !filters.empty() ) {</span>
+<span style = "background-color:#fdd">            m_filters.reserve( m_filters.size() + filters.size() + 2 );
+            m_filters.emplace_back(StringRef{}); // Root - should never be consulted
+            m_filters.emplace_back(StringRef{}); // Test Case - not a section filter
+            m_filters.insert( m_filters.end(), filters.begin(), filters.end() );</span>
+        }
+<span style = "background-color:#dfd">    }
+    void SectionTracker::addNextFilters( std::vector&lt;StringRef&gt; const&amp; filters ) {
+        if( filters.size() &gt; 1 )</span>
+<span style = "background-color:#fdd">            m_filters.insert( m_filters.end(), filters.begin()+1, filters.end() );</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#fdd">    StringRef SectionTracker::trimmedName() const {
+        return m_trimmed_name;
+    }</span>
+
+} // namespace TestCaseTracking
+
+} // namespace Catch
+
+#if defined(__clang__)
+#    pragma clang diagnostic pop
+#endif</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

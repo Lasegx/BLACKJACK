@@ -1,0 +1,776 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_clara.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_CLARA_HPP_INCLUDED
+#define CATCH_CLARA_HPP_INCLUDED
+
+#if defined( __clang__ )
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wweak-vtables"
+#    pragma clang diagnostic ignored "-Wshadow"
+#    pragma clang diagnostic ignored "-Wdeprecated"
+#endif
+
+#if defined( __GNUC__ )
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Wsign-conversion"
+#endif
+
+#ifndef CLARA_CONFIG_OPTIONAL_TYPE
+#    ifdef __has_include
+#        if __has_include( &lt;optional&gt;) &amp;&amp; __cplusplus &gt;= 201703L
+#            include &lt;optional&gt;
+#            define CLARA_CONFIG_OPTIONAL_TYPE std::optional
+#        endif
+#    endif
+#endif
+
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_noncopyable.hpp&gt;
+#include &lt;catch2/internal/catch_void_type.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;memory&gt;
+#include &lt;ostream&gt;
+#include &lt;sstream&gt;
+#include &lt;string&gt;
+#include &lt;type_traits&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+    namespace Clara {
+
+        class Args;
+        class Parser;
+
+        // enum of result types from a parse
+        enum class ParseResultType {
+            Matched,
+            NoMatch,
+            ShortCircuitAll,
+            ShortCircuitSame
+        };
+
+        struct accept_many_t {};
+        constexpr accept_many_t accept_many {};
+
+        namespace Detail {
+            struct fake_arg {
+                template &lt;typename T&gt;
+                operator T();
+            };
+
+            template &lt;typename F, typename = void&gt;
+            struct is_unary_function : std::false_type {};
+
+            template &lt;typename F&gt;
+            struct is_unary_function&lt;
+                F,
+                Catch::Detail::void_t&lt;decltype(
+                    std::declval&lt;F&gt;()( fake_arg() ) )
+                &gt;
+            &gt; : std::true_type {};
+
+            // Traits for extracting arg and return type of lambdas (for single
+            // argument lambdas)
+            template &lt;typename L&gt;
+            struct UnaryLambdaTraits
+                : UnaryLambdaTraits&lt;decltype( &amp;L::operator() )&gt; {};
+
+            template &lt;typename ClassT, typename ReturnT, typename... Args&gt;
+            struct UnaryLambdaTraits&lt;ReturnT ( ClassT::* )( Args... ) const&gt; {
+                static const bool isValid = false;
+            };
+
+            template &lt;typename ClassT, typename ReturnT, typename ArgT&gt;
+            struct UnaryLambdaTraits&lt;ReturnT ( ClassT::* )( ArgT ) const&gt; {
+                static const bool isValid = true;
+                using ArgType = std::remove_const_t&lt;std::remove_reference_t&lt;ArgT&gt;&gt;;
+                using ReturnType = ReturnT;
+            };
+
+            class TokenStream;
+
+            // Wraps a token coming from a token stream. These may not directly
+            // correspond to strings as a single string may encode an option +
+            // its argument if the : or = form is used
+            enum class TokenType { Option, Argument };
+            struct Token {
+                TokenType type;
+                StringRef token;
+            };
+
+            // Abstracts iterators into args as a stream of tokens, with option
+            // arguments uniformly handled
+            class TokenStream {
+                using Iterator = std::vector&lt;StringRef&gt;::const_iterator;
+                Iterator it;
+                Iterator itEnd;
+                std::vector&lt;Token&gt; m_tokenBuffer;
+                void loadBuffer();
+
+            public:
+                explicit TokenStream( Args const&amp; args );
+                TokenStream( Iterator it, Iterator itEnd );
+
+<span style = "background-color:#dfd">                explicit operator bool() const {
+                    return !m_tokenBuffer.empty() || it != itEnd;
+                }</span>
+
+                size_t count() const {
+                    return m_tokenBuffer.size() + ( itEnd - it );
+                }
+
+<span style = "background-color:#fdd">                Token operator*() const {
+                    assert( !m_tokenBuffer.empty() );
+                    return m_tokenBuffer.front();
+                }</span>
+
+<span style = "background-color:#fdd">                Token const* operator-&gt;() const {
+                    assert( !m_tokenBuffer.empty() );
+                    return &amp;m_tokenBuffer.front();
+                }</span>
+
+                TokenStream&amp; operator++();
+            };
+
+            //! Denotes type of a parsing result
+            enum class ResultType {
+                Ok,          ///&lt; No errors
+                LogicError,  ///&lt; Error in user-specified arguments for
+                             ///&lt; construction
+                RuntimeError ///&lt; Error in parsing inputs
+            };
+
+            class ResultBase {
+            protected:
+<span style = "background-color:#dfd">                ResultBase( ResultType type ): m_type( type ) {}</span>
+                virtual ~ResultBase(); // = default;
+
+
+<span style = "background-color:#dfd">                ResultBase(ResultBase const&amp;) = default;</span>
+<span style = "background-color:#fdd">                ResultBase&amp; operator=(ResultBase const&amp;) = default;
+                ResultBase(ResultBase&amp;&amp;) = default;</span>
+                ResultBase&amp; operator=(ResultBase&amp;&amp;) = default;
+
+                virtual void enforceOk() const = 0;
+
+                ResultType m_type;
+            };
+
+            template &lt;typename T&gt;
+            class ResultValueBase : public ResultBase {
+            public:
+<span style = "background-color:#dfd">                T const&amp; value() const&amp; {
+                    enforceOk();
+                    return m_value;
+                }</span>
+<span style = "background-color:#fdd">                T&amp;&amp; value() &amp;&amp; {
+                    enforceOk();
+                    return CATCH_MOVE( m_value );
+                }</span>
+
+            protected:
+<span style = "background-color:#fdd">                ResultValueBase( ResultType type ): ResultBase( type ) {}</span>
+
+                ResultValueBase( ResultValueBase const&amp; other ):
+<span style = "background-color:#fdd">                    ResultBase( other ) {
+                    if ( m_type == ResultType::Ok )
+                        new ( &amp;m_value ) T( other.m_value );
+                }</span>
+                ResultValueBase( ResultValueBase&amp;&amp; other ):
+<span style = "background-color:#dfd">                    ResultBase( other ) {
+                    if ( m_type == ResultType::Ok )
+                        new ( &amp;m_value ) T( CATCH_MOVE(other.m_value) );
+                }</span>
+
+
+                ResultValueBase( ResultType, T const&amp; value ):
+                    ResultBase( ResultType::Ok ) {
+                    new ( &amp;m_value ) T( value );
+                }
+                ResultValueBase( ResultType, T&amp;&amp; value ):
+<span style = "background-color:#dfd">                    ResultBase( ResultType::Ok ) {
+                    new ( &amp;m_value ) T( CATCH_MOVE(value) );
+                }</span>
+
+                ResultValueBase&amp; operator=( ResultValueBase const&amp; other ) {
+                    if ( m_type == ResultType::Ok )
+                        m_value.~T();
+                    ResultBase::operator=( other );
+                    if ( m_type == ResultType::Ok )
+                        new ( &amp;m_value ) T( other.m_value );
+                    return *this;
+                }
+<span style = "background-color:#fdd">                ResultValueBase&amp; operator=( ResultValueBase&amp;&amp; other ) {
+                    if ( m_type == ResultType::Ok ) m_value.~T();
+                    ResultBase::operator=( other );
+                    if ( m_type == ResultType::Ok )
+                        new ( &amp;m_value ) T( CATCH_MOVE(other.m_value) );
+                    return *this;
+                }</span>
+
+
+<span style = "background-color:#dfd">                ~ResultValueBase() override {
+                    if ( m_type == ResultType::Ok )
+                        m_value.~T();
+                }</span>
+
+                union {
+                    T m_value;
+                };
+            };
+
+            template &lt;&gt; class ResultValueBase&lt;void&gt; : public ResultBase {
+            protected:
+                using ResultBase::ResultBase;
+            };
+
+            template &lt;typename T = void&gt;
+            class BasicResult : public ResultValueBase&lt;T&gt; {
+            public:
+                template &lt;typename U&gt;
+                explicit BasicResult( BasicResult&lt;U&gt; const&amp; other ):
+<span style = "background-color:#fdd">                    ResultValueBase&lt;T&gt;( other.type() ),
+                    m_errorMessage( other.errorMessage() ) {
+                    assert( type() != ResultType::Ok );
+                }</span>
+
+                template &lt;typename U&gt;
+<span style = "background-color:#dfd">                static auto ok( U&amp;&amp; value ) -&gt; BasicResult {
+                    return { ResultType::Ok, CATCH_FORWARD(value) };
+                }</span>
+<span style = "background-color:#fdd">                static auto ok() -&gt; BasicResult { return { ResultType::Ok }; }</span>
+                static auto logicError( std::string&amp;&amp; message )
+<span style = "background-color:#fdd">                    -&gt; BasicResult {
+                    return { ResultType::LogicError, CATCH_MOVE(message) };
+                }</span>
+                static auto runtimeError( std::string&amp;&amp; message )
+<span style = "background-color:#fdd">                    -&gt; BasicResult {
+                    return { ResultType::RuntimeError, CATCH_MOVE(message) };
+                }</span>
+
+<span style = "background-color:#dfd">                explicit operator bool() const {
+                    return m_type == ResultType::Ok;
+                }</span>
+<span style = "background-color:#fdd">                auto type() const -&gt; ResultType { return m_type; }
+                auto errorMessage() const -&gt; std::string const&amp; {
+                    return m_errorMessage;
+                }</span>
+
+            protected:
+<span style = "background-color:#dfd">                void enforceOk() const override {</span>
+
+                    // Errors shouldn't reach this point, but if they do
+                    // the actual error message will be in m_errorMessage
+<span style = "background-color:#dfd">                    assert( m_type != ResultType::LogicError );
+                    assert( m_type != ResultType::RuntimeError );
+                    if ( m_type != ResultType::Ok )</span>
+<span style = "background-color:#fdd">                        std::abort();</span>
+<span style = "background-color:#dfd">                }</span>
+
+                std::string
+                    m_errorMessage; // Only populated if resultType is an error
+
+                BasicResult( ResultType type,
+                             std::string&amp;&amp; message ):
+<span style = "background-color:#fdd">                    ResultValueBase&lt;T&gt;( type ), m_errorMessage( CATCH_MOVE(message) ) {
+                    assert( m_type != ResultType::Ok );
+                }</span>
+
+                using ResultValueBase&lt;T&gt;::ResultValueBase;
+                using ResultBase::m_type;
+            };
+
+            class ParseState {
+            public:
+                ParseState( ParseResultType type,
+                            TokenStream remainingTokens );
+
+<span style = "background-color:#fdd">                ParseResultType type() const { return m_type; }</span>
+<span style = "background-color:#dfd">                TokenStream const&amp; remainingTokens() const&amp; {
+                    return m_remainingTokens;
+                }</span>
+<span style = "background-color:#fdd">                TokenStream&amp;&amp; remainingTokens() &amp;&amp; {
+                    return CATCH_MOVE( m_remainingTokens );
+                }</span>
+
+            private:
+                ParseResultType m_type;
+                TokenStream m_remainingTokens;
+            };
+
+            using Result = BasicResult&lt;void&gt;;
+            using ParserResult = BasicResult&lt;ParseResultType&gt;;
+            using InternalParseResult = BasicResult&lt;ParseState&gt;;
+
+            struct HelpColumns {
+                std::string left;
+                StringRef descriptions;
+            };
+
+            template &lt;typename T&gt;
+<span style = "background-color:#fdd">            ParserResult convertInto( std::string const&amp; source, T&amp; target ) {
+                std::stringstream ss( source );
+                ss &gt;&gt; target;
+                if ( ss.fail() ) {
+                    return ParserResult::runtimeError(</span>
+                        "Unable to convert '" + source +
+                        "' to destination type" );
+<span style = "background-color:#fdd">                } else {
+                    return ParserResult::ok( ParseResultType::Matched );</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+            ParserResult convertInto( std::string const&amp; source,
+                                      std::string&amp; target );
+            ParserResult convertInto( std::string const&amp; source, bool&amp; target );
+
+#ifdef CLARA_CONFIG_OPTIONAL_TYPE
+            template &lt;typename T&gt;
+            auto convertInto( std::string const&amp; source,
+                              CLARA_CONFIG_OPTIONAL_TYPE&lt;T&gt;&amp; target )
+                -&gt; ParserResult {
+                T temp;
+                auto result = convertInto( source, temp );
+                if ( result )
+                    target = CATCH_MOVE( temp );
+                return result;
+            }
+#endif // CLARA_CONFIG_OPTIONAL_TYPE
+
+            struct BoundRef : Catch::Detail::NonCopyable {
+<span style = "background-color:#dfd">                virtual ~BoundRef() = default;</span>
+                virtual bool isContainer() const;
+                virtual bool isFlag() const;
+            };
+            struct BoundValueRefBase : BoundRef {
+                virtual auto setValue( std::string const&amp; arg )
+                    -&gt; ParserResult = 0;
+            };
+            struct BoundFlagRefBase : BoundRef {
+                virtual auto setFlag( bool flag ) -&gt; ParserResult = 0;
+                bool isFlag() const override;
+            };
+
+            template &lt;typename T&gt; struct BoundValueRef : BoundValueRefBase {
+                T&amp; m_ref;
+
+<span style = "background-color:#dfd">                explicit BoundValueRef( T&amp; ref ): m_ref( ref ) {}</span>
+
+<span style = "background-color:#dfd">                ParserResult setValue( std::string const&amp; arg ) override {
+                    return convertInto( arg, m_ref );
+                }</span>
+            };
+
+            template &lt;typename T&gt;
+            struct BoundValueRef&lt;std::vector&lt;T&gt;&gt; : BoundValueRefBase {
+                std::vector&lt;T&gt;&amp; m_ref;
+
+<span style = "background-color:#dfd">                explicit BoundValueRef( std::vector&lt;T&gt;&amp; ref ): m_ref( ref ) {}</span>
+
+<span style = "background-color:#fdd">                auto isContainer() const -&gt; bool override { return true; }</span>
+
+                auto setValue( std::string const&amp; arg )
+<span style = "background-color:#fdd">                    -&gt; ParserResult override {
+                    T temp;
+                    auto result = convertInto( arg, temp );
+                    if ( result )
+                        m_ref.push_back( temp );
+                    return result;
+                }</span>
+            };
+
+            struct BoundFlagRef : BoundFlagRefBase {
+                bool&amp; m_ref;
+
+<span style = "background-color:#dfd">                explicit BoundFlagRef( bool&amp; ref ): m_ref( ref ) {}</span>
+
+                ParserResult setFlag( bool flag ) override;
+            };
+
+            template &lt;typename ReturnType&gt; struct LambdaInvoker {
+                static_assert(
+                    std::is_same&lt;ReturnType, ParserResult&gt;::value,
+                    "Lambda must return void or clara::ParserResult" );
+
+                template &lt;typename L, typename ArgType&gt;
+                static auto invoke( L const&amp; lambda, ArgType const&amp; arg )
+<span style = "background-color:#fdd">                    -&gt; ParserResult {
+                    return lambda( arg );
+                }</span>
+            };
+
+            template &lt;&gt; struct LambdaInvoker&lt;void&gt; {
+                template &lt;typename L, typename ArgType&gt;
+                static auto invoke( L const&amp; lambda, ArgType const&amp; arg )
+<span style = "background-color:#fdd">                    -&gt; ParserResult {
+                    lambda( arg );
+                    return ParserResult::ok( ParseResultType::Matched );
+                }</span>
+            };
+
+            template &lt;typename ArgType, typename L&gt;
+            auto invokeLambda( L const&amp; lambda, std::string const&amp; arg )
+<span style = "background-color:#fdd">                -&gt; ParserResult {
+                ArgType temp{};
+                auto result = convertInto( arg, temp );
+                return !result ? result</span>
+                               : LambdaInvoker&lt;typename UnaryLambdaTraits&lt;
+                                     L&gt;::ReturnType&gt;::invoke( lambda, temp );
+<span style = "background-color:#fdd">            }</span>
+
+            template &lt;typename L&gt; struct BoundLambda : BoundValueRefBase {
+                L m_lambda;
+
+                static_assert(
+                    UnaryLambdaTraits&lt;L&gt;::isValid,
+                    "Supplied lambda must take exactly one argument" );
+<span style = "background-color:#dfd">                explicit BoundLambda( L const&amp; lambda ): m_lambda( lambda ) {}</span>
+
+                auto setValue( std::string const&amp; arg )
+<span style = "background-color:#fdd">                    -&gt; ParserResult override {
+                    return invokeLambda&lt;typename UnaryLambdaTraits&lt;L&gt;::ArgType&gt;(</span>
+                        m_lambda, arg );
+<span style = "background-color:#fdd">                }</span>
+            };
+
+            template &lt;typename L&gt; struct BoundManyLambda : BoundLambda&lt;L&gt; {
+<span style = "background-color:#dfd">                explicit BoundManyLambda( L const&amp; lambda ): BoundLambda&lt;L&gt;( lambda ) {}</span>
+<span style = "background-color:#fdd">                bool isContainer() const override { return true; }</span>
+            };
+
+            template &lt;typename L&gt; struct BoundFlagLambda : BoundFlagRefBase {
+                L m_lambda;
+
+                static_assert(
+                    UnaryLambdaTraits&lt;L&gt;::isValid,
+                    "Supplied lambda must take exactly one argument" );
+                static_assert(
+                    std::is_same&lt;typename UnaryLambdaTraits&lt;L&gt;::ArgType,
+                                 bool&gt;::value,
+                    "flags must be boolean" );
+
+                explicit BoundFlagLambda( L const&amp; lambda ):
+<span style = "background-color:#dfd">                    m_lambda( lambda ) {}</span>
+
+<span style = "background-color:#fdd">                auto setFlag( bool flag ) -&gt; ParserResult override {
+                    return LambdaInvoker&lt;typename UnaryLambdaTraits&lt;</span>
+                        L&gt;::ReturnType&gt;::invoke( m_lambda, flag );
+<span style = "background-color:#fdd">                }</span>
+            };
+
+            enum class Optionality { Optional, Required };
+
+            class ParserBase {
+            public:
+<span style = "background-color:#dfd">                virtual ~ParserBase() = default;</span>
+<span style = "background-color:#fdd">                virtual auto validate() const -&gt; Result { return Result::ok(); }</span>
+                virtual auto parse( std::string const&amp; exeName,
+                                    TokenStream tokens ) const
+                    -&gt; InternalParseResult = 0;
+                virtual size_t cardinality() const;
+
+                InternalParseResult parse( Args const&amp; args ) const;
+            };
+
+            template &lt;typename DerivedT&gt;
+            class ComposableParserImpl : public ParserBase {
+            public:
+                template &lt;typename T&gt;
+                auto operator|( T const&amp; other ) const -&gt; Parser;
+            };
+
+            // Common code and state for Args and Opts
+            template &lt;typename DerivedT&gt;
+            class ParserRefImpl : public ComposableParserImpl&lt;DerivedT&gt; {
+            protected:
+<span style = "background-color:#dfd">                Optionality m_optionality = Optionality::Optional;</span>
+                std::shared_ptr&lt;BoundRef&gt; m_ref;
+                StringRef m_hint;
+                StringRef m_description;
+
+                explicit ParserRefImpl( std::shared_ptr&lt;BoundRef&gt; const&amp; ref ):
+<span style = "background-color:#dfd">                    m_ref( ref ) {}</span>
+
+            public:
+                template &lt;typename LambdaT&gt;
+                ParserRefImpl( accept_many_t,
+                               LambdaT const&amp; ref,
+                               StringRef hint ):
+<span style = "background-color:#dfd">                    m_ref( std::make_shared&lt;BoundManyLambda&lt;LambdaT&gt;&gt;( ref ) ),
+                    m_hint( hint ) {}</span>
+
+                template &lt;typename T,
+                          typename = typename std::enable_if_t&lt;
+                              !Detail::is_unary_function&lt;T&gt;::value&gt;&gt;
+                ParserRefImpl( T&amp; ref, StringRef hint ):
+<span style = "background-color:#dfd">                    m_ref( std::make_shared&lt;BoundValueRef&lt;T&gt;&gt;( ref ) ),
+                    m_hint( hint ) {}</span>
+
+                template &lt;typename LambdaT,
+                          typename = typename std::enable_if_t&lt;
+                              Detail::is_unary_function&lt;LambdaT&gt;::value&gt;&gt;
+                ParserRefImpl( LambdaT const&amp; ref, StringRef hint ):
+<span style = "background-color:#dfd">                    m_ref( std::make_shared&lt;BoundLambda&lt;LambdaT&gt;&gt;( ref ) ),
+                    m_hint( hint ) {}</span>
+
+<span style = "background-color:#dfd">                DerivedT&amp; operator()( StringRef description ) &amp; {
+                    m_description = description;
+                    return static_cast&lt;DerivedT&amp;&gt;( *this );
+                }
+                DerivedT&amp;&amp; operator()( StringRef description ) &amp;&amp; {
+                    m_description = description;
+                    return static_cast&lt;DerivedT&amp;&amp;&gt;( *this );
+                }</span>
+
+<span style = "background-color:#dfd">                auto optional() -&gt; DerivedT&amp; {
+                    m_optionality = Optionality::Optional;
+                    return static_cast&lt;DerivedT&amp;&gt;( *this );
+                }</span>
+
+                auto required() -&gt; DerivedT&amp; {
+                    m_optionality = Optionality::Required;
+                    return static_cast&lt;DerivedT&amp;&gt;( *this );
+                }
+
+<span style = "background-color:#fdd">                auto isOptional() const -&gt; bool {
+                    return m_optionality == Optionality::Optional;
+                }</span>
+
+<span style = "background-color:#fdd">                auto cardinality() const -&gt; size_t override {
+                    if ( m_ref-&gt;isContainer() )
+                        return 0;</span>
+                    else
+<span style = "background-color:#fdd">                        return 1;
+                }</span>
+
+<span style = "background-color:#fdd">                StringRef hint() const { return m_hint; }</span>
+            };
+
+        } // namespace detail
+
+
+        // A parser for arguments
+        class Arg : public Detail::ParserRefImpl&lt;Arg&gt; {
+        public:
+            using ParserRefImpl::ParserRefImpl;
+            using ParserBase::parse;
+
+            Detail::InternalParseResult
+                parse(std::string const&amp;,
+                      Detail::TokenStream tokens) const override;
+        };
+
+        // A parser for options
+        class Opt : public Detail::ParserRefImpl&lt;Opt&gt; {
+        protected:
+            std::vector&lt;StringRef&gt; m_optNames;
+
+        public:
+            template &lt;typename LambdaT&gt;
+            explicit Opt(LambdaT const&amp; ref) :
+<span style = "background-color:#dfd">                ParserRefImpl(
+                    std::make_shared&lt;Detail::BoundFlagLambda&lt;LambdaT&gt;&gt;(ref)) {}</span>
+
+            explicit Opt(bool&amp; ref);
+
+            template &lt;typename LambdaT,
+                      typename = typename std::enable_if_t&lt;
+                          Detail::is_unary_function&lt;LambdaT&gt;::value&gt;&gt;
+            Opt( LambdaT const&amp; ref, StringRef hint ):
+<span style = "background-color:#dfd">                ParserRefImpl( ref, hint ) {}</span>
+
+            template &lt;typename LambdaT&gt;
+            Opt( accept_many_t, LambdaT const&amp; ref, StringRef hint ):
+<span style = "background-color:#dfd">                ParserRefImpl( accept_many, ref, hint ) {}</span>
+
+            template &lt;typename T,
+                      typename = typename std::enable_if_t&lt;
+                          !Detail::is_unary_function&lt;T&gt;::value&gt;&gt;
+            Opt( T&amp; ref, StringRef hint ):
+<span style = "background-color:#dfd">                ParserRefImpl( ref, hint ) {}</span>
+
+<span style = "background-color:#dfd">            Opt&amp; operator[]( StringRef optName ) &amp; {
+                m_optNames.push_back(optName);
+                return *this;
+            }
+            Opt&amp;&amp; operator[]( StringRef optName ) &amp;&amp; {
+                m_optNames.push_back( optName );
+                return CATCH_MOVE(*this);
+            }</span>
+
+            Detail::HelpColumns getHelpColumns() const;
+
+            bool isMatch(StringRef optToken) const;
+
+            using ParserBase::parse;
+
+            Detail::InternalParseResult
+                parse(std::string const&amp;,
+                      Detail::TokenStream tokens) const override;
+
+            Detail::Result validate() const override;
+        };
+
+        // Specifies the name of the executable
+        class ExeName : public Detail::ComposableParserImpl&lt;ExeName&gt; {
+            std::shared_ptr&lt;std::string&gt; m_name;
+            std::shared_ptr&lt;Detail::BoundValueRefBase&gt; m_ref;
+
+        public:
+            ExeName();
+            explicit ExeName(std::string&amp; ref);
+
+            template &lt;typename LambdaT&gt;
+            explicit ExeName(LambdaT const&amp; lambda) : ExeName() {
+                m_ref = std::make_shared&lt;Detail::BoundLambda&lt;LambdaT&gt;&gt;(lambda);
+            }
+
+            // The exe name is not parsed out of the normal tokens, but is
+            // handled specially
+            Detail::InternalParseResult
+                parse(std::string const&amp;,
+                      Detail::TokenStream tokens) const override;
+
+<span style = "background-color:#fdd">            std::string const&amp; name() const { return *m_name; }</span>
+            Detail::ParserResult set(std::string const&amp; newName);
+        };
+
+
+        // A Combined parser
+        class Parser : Detail::ParserBase {
+            mutable ExeName m_exeName;
+            std::vector&lt;Opt&gt; m_options;
+            std::vector&lt;Arg&gt; m_args;
+
+        public:
+
+<span style = "background-color:#dfd">            auto operator|=(ExeName const&amp; exeName) -&gt; Parser&amp; {
+                m_exeName = exeName;
+                return *this;
+            }</span>
+
+<span style = "background-color:#dfd">            auto operator|=(Arg const&amp; arg) -&gt; Parser&amp; {
+                m_args.push_back(arg);
+                return *this;
+            }</span>
+
+<span style = "background-color:#dfd">            friend Parser&amp; operator|=( Parser&amp; p, Opt const&amp; opt ) {
+                p.m_options.push_back( opt );
+                return p;
+            }
+            friend Parser&amp; operator|=( Parser&amp; p, Opt&amp;&amp; opt ) {
+                p.m_options.push_back( CATCH_MOVE(opt) );
+                return p;
+            }</span>
+
+            Parser&amp; operator|=(Parser const&amp; other);
+
+            template &lt;typename T&gt;
+            friend Parser operator|( Parser const&amp; p, T&amp;&amp; rhs ) {
+                Parser temp( p );
+                temp |= rhs;
+                return temp;
+            }
+
+            template &lt;typename T&gt;
+<span style = "background-color:#dfd">            friend Parser operator|( Parser&amp;&amp; p, T&amp;&amp; rhs ) {
+                p |= CATCH_FORWARD(rhs);
+                return CATCH_MOVE(p);
+            }</span>
+
+            std::vector&lt;Detail::HelpColumns&gt; getHelpColumns() const;
+
+            void writeToStream(std::ostream&amp; os) const;
+
+            friend auto operator&lt;&lt;(std::ostream&amp; os, Parser const&amp; parser)
+<span style = "background-color:#fdd">                -&gt; std::ostream&amp; {
+                parser.writeToStream(os);
+                return os;
+            }</span>
+
+            Detail::Result validate() const override;
+
+            using ParserBase::parse;
+            Detail::InternalParseResult
+                parse(std::string const&amp; exeName,
+                      Detail::TokenStream tokens) const override;
+        };
+
+        /**
+         * Wrapper over argc + argv, assumes that the inputs outlive it
+         */
+        class Args {
+            friend Detail::TokenStream;
+            StringRef m_exeName;
+            std::vector&lt;StringRef&gt; m_args;
+
+        public:
+            Args(int argc, char const* const* argv);
+            // Helper constructor for testing
+            Args(std::initializer_list&lt;StringRef&gt; args);
+
+<span style = "background-color:#dfd">            StringRef exeName() const { return m_exeName; }</span>
+        };
+
+
+        // Convenience wrapper for option parser that specifies the help option
+        struct Help : Opt {
+            Help(bool&amp; showHelpFlag);
+        };
+
+        // Result type for parser operation
+        using Detail::ParserResult;
+
+        namespace Detail {
+            template &lt;typename DerivedT&gt;
+            template &lt;typename T&gt;
+            Parser
+<span style = "background-color:#dfd">                ComposableParserImpl&lt;DerivedT&gt;::operator|(T const&amp; other) const {
+                return Parser() | static_cast&lt;DerivedT const&amp;&gt;(*this) | other;
+            }</span>
+        }
+
+    } // namespace Clara
+} // namespace Catch
+
+#if defined( __clang__ )
+#    pragma clang diagnostic pop
+#endif
+
+#if defined( __GNUC__ )
+#    pragma GCC diagnostic pop
+#endif
+
+#endif // CATCH_CLARA_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,335 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_junit.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_junit.hpp&gt;
+
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;ctime&gt;
+#include &lt;algorithm&gt;
+#include &lt;iomanip&gt;
+
+namespace Catch {
+
+    namespace {
+<span style = "background-color:#fdd">        std::string getCurrentTimestamp() {</span>
+            time_t rawtime;
+<span style = "background-color:#fdd">            std::time(&amp;rawtime);</span>
+
+<span style = "background-color:#fdd">            std::tm timeInfo = {};</span>
+#if defined (_MSC_VER) || defined (__MINGW32__)
+<span style = "background-color:#fdd">            gmtime_s(&amp;timeInfo, &amp;rawtime);</span>
+#elif defined (CATCH_PLATFORM_PLAYSTATION)
+            gmtime_s(&amp;rawtime, &amp;timeInfo);
+#elif defined (__IAR_SYSTEMS_ICC__)
+            timeInfo = *std::gmtime(&amp;rawtime);
+#else
+            gmtime_r(&amp;rawtime, &amp;timeInfo);
+#endif
+
+<span style = "background-color:#fdd">            auto const timeStampSize = sizeof("2017-01-16T17:06:45Z");</span>
+            char timeStamp[timeStampSize];
+<span style = "background-color:#fdd">            const char * const fmt = "%Y-%m-%dT%H:%M:%SZ";</span>
+
+<span style = "background-color:#fdd">            std::strftime(timeStamp, timeStampSize, fmt, &amp;timeInfo);</span>
+
+<span style = "background-color:#fdd">            return std::string(timeStamp, timeStampSize - 1);
+        }</span>
+
+<span style = "background-color:#fdd">        std::string fileNameTag(std::vector&lt;Tag&gt; const&amp; tags) {
+            auto it = std::find_if(begin(tags),</span>
+                                   end(tags),
+                                   [] (Tag const&amp; tag) {
+<span style = "background-color:#fdd">                                       return tag.original.size() &gt; 0
+                                           &amp;&amp; tag.original[0] == '#'; });
+            if (it != tags.end()) {
+                return static_cast&lt;std::string&gt;(</span>
+                    it-&gt;original.substr(1, it-&gt;original.size() - 1)
+                );
+            }
+<span style = "background-color:#fdd">            return std::string();
+        }</span>
+
+        // Formats the duration in seconds to 3 decimal places.
+        // This is done because some genius defined Maven Surefire schema
+        // in a way that only accepts 3 decimal places, and tools like
+        // Jenkins use that schema for validation JUnit reporter output.
+<span style = "background-color:#fdd">        std::string formatDuration( double seconds ) {
+            ReusableStringStream rss;
+            rss &lt;&lt; std::fixed &lt;&lt; std::setprecision( 3 ) &lt;&lt; seconds;
+            return rss.str();
+        }</span>
+
+<span style = "background-color:#fdd">        static void normalizeNamespaceMarkers(std::string&amp; str) {
+            std::size_t pos = str.find( "::" );
+            while ( pos != str.npos ) {
+                str.replace( pos, 2, "." );
+                pos += 1;
+                pos = str.find( "::", pos );
+            }
+        }</span>
+
+    } // anonymous namespace
+
+    JunitReporter::JunitReporter( ReporterConfig&amp;&amp; _config )
+<span style = "background-color:#fdd">        :   CumulativeReporterBase( CATCH_MOVE(_config) ),
+            xml( m_stream )
+        {
+            m_preferences.shouldRedirectStdOut = true;
+            m_preferences.shouldReportAllAssertions = true;
+            m_shouldStoreSuccesfulAssertions = false;
+        }</span>
+
+<span style = "background-color:#fdd">    std::string JunitReporter::getDescription() {
+        return "Reports test results in an XML format that looks like Ant's junitreport target";
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::testRunStarting( TestRunInfo const&amp; runInfo )  {
+        CumulativeReporterBase::testRunStarting( runInfo );
+        xml.startElement( "testsuites" );
+        suiteTimer.start();
+        stdOutForSuite.clear();
+        stdErrForSuite.clear();
+        unexpectedExceptions = 0;
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::testCaseStarting( TestCaseInfo const&amp; testCaseInfo ) {
+        m_okToFail = testCaseInfo.okToFail();
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::assertionEnded( AssertionStats const&amp; assertionStats ) {
+        if( assertionStats.assertionResult.getResultType() == ResultWas::ThrewException &amp;&amp; !m_okToFail )
+            unexpectedExceptions++;
+        CumulativeReporterBase::assertionEnded( assertionStats );
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::testCaseEnded( TestCaseStats const&amp; testCaseStats ) {
+        stdOutForSuite += testCaseStats.stdOut;
+        stdErrForSuite += testCaseStats.stdErr;
+        CumulativeReporterBase::testCaseEnded( testCaseStats );
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::testRunEndedCumulative() {
+        const auto suiteTime = suiteTimer.getElapsedSeconds();
+        writeRun( *m_testRun, suiteTime );
+        xml.endElement();
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::writeRun( TestRunNode const&amp; testRunNode, double suiteTime ) {
+        XmlWriter::ScopedElement e = xml.scopedElement( "testsuite" );</span>
+
+<span style = "background-color:#fdd">        TestRunStats const&amp; stats = testRunNode.value;
+        xml.writeAttribute( "name"_sr, stats.runInfo.name );
+        xml.writeAttribute( "errors"_sr, unexpectedExceptions );
+        xml.writeAttribute( "failures"_sr, stats.totals.assertions.failed-unexpectedExceptions );
+        xml.writeAttribute( "skipped"_sr, stats.totals.assertions.skipped );
+        xml.writeAttribute( "tests"_sr, stats.totals.assertions.total() );
+        xml.writeAttribute( "hostname"_sr, "tbd"_sr ); // !TBD
+        if( m_config-&gt;showDurations() == ShowDurations::Never )
+            xml.writeAttribute( "time"_sr, ""_sr );</span>
+        else
+<span style = "background-color:#fdd">            xml.writeAttribute( "time"_sr, formatDuration( suiteTime ) );
+        xml.writeAttribute( "timestamp"_sr, getCurrentTimestamp() );</span>
+
+        // Write properties
+        {
+<span style = "background-color:#fdd">            auto properties = xml.scopedElement("properties");
+            xml.scopedElement("property")</span>
+                .writeAttribute("name"_sr, "random-seed"_sr)
+                .writeAttribute("value"_sr, m_config-&gt;rngSeed());
+<span style = "background-color:#fdd">            if (m_config-&gt;testSpec().hasFilters()) {
+                xml.scopedElement("property")</span>
+                    .writeAttribute("name"_sr, "filters"_sr)
+                    .writeAttribute("value"_sr, m_config-&gt;testSpec());
+            }
+<span style = "background-color:#fdd">        }</span>
+
+        // Write test cases
+<span style = "background-color:#fdd">        for( auto const&amp; child : testRunNode.children )
+            writeTestCase( *child );</span>
+
+<span style = "background-color:#fdd">        xml.scopedElement( "system-out" ).writeText( trim( stdOutForSuite ), XmlFormatting::Newline );
+        xml.scopedElement( "system-err" ).writeText( trim( stdErrForSuite ), XmlFormatting::Newline );
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::writeTestCase( TestCaseNode const&amp; testCaseNode ) {
+        TestCaseStats const&amp; stats = testCaseNode.value;</span>
+
+        // All test cases have exactly one section - which represents the
+        // test case itself. That section may have 0-n nested sections
+<span style = "background-color:#fdd">        assert( testCaseNode.children.size() == 1 );
+        SectionNode const&amp; rootSection = *testCaseNode.children.front();</span>
+
+<span style = "background-color:#fdd">        std::string className =</span>
+            static_cast&lt;std::string&gt;( stats.testInfo-&gt;className );
+
+<span style = "background-color:#fdd">        if( className.empty() ) {
+            className = fileNameTag(stats.testInfo-&gt;tags);
+            if ( className.empty() ) {
+                className = "global";</span>
+            }
+        }
+
+<span style = "background-color:#fdd">        if ( !m_config-&gt;name().empty() )
+            className = static_cast&lt;std::string&gt;(m_config-&gt;name()) + '.' + className;</span>
+
+<span style = "background-color:#fdd">        normalizeNamespaceMarkers(className);</span>
+
+<span style = "background-color:#fdd">        writeSection( className, "", rootSection, stats.testInfo-&gt;okToFail() );
+    }</span>
+
+    void JunitReporter::writeSection( std::string const&amp; className,
+                                      std::string const&amp; rootName,
+                                      SectionNode const&amp; sectionNode,
+<span style = "background-color:#fdd">                                      bool testOkToFail) {
+        std::string name = trim( sectionNode.stats.sectionInfo.name );
+        if( !rootName.empty() )
+            name = rootName + '/' + name;</span>
+
+        if( sectionNode.hasAnyAssertions()
+           || !sectionNode.stdOut.empty()
+<span style = "background-color:#fdd">           || !sectionNode.stdErr.empty() ) {
+            XmlWriter::ScopedElement e = xml.scopedElement( "testcase" );
+            if( className.empty() ) {
+                xml.writeAttribute( "classname"_sr, name );
+                xml.writeAttribute( "name"_sr, "root"_sr );
+            }</span>
+            else {
+<span style = "background-color:#fdd">                xml.writeAttribute( "classname"_sr, className );
+                xml.writeAttribute( "name"_sr, name );</span>
+            }
+<span style = "background-color:#fdd">            xml.writeAttribute( "time"_sr, formatDuration( sectionNode.stats.durationInSeconds ) );</span>
+            // This is not ideal, but it should be enough to mimic gtest's
+            // junit output.
+            // Ideally the JUnit reporter would also handle `skipTest`
+            // events and write those out appropriately.
+<span style = "background-color:#fdd">            xml.writeAttribute( "status"_sr, "run"_sr );</span>
+
+<span style = "background-color:#fdd">            if (sectionNode.stats.assertions.failedButOk) {
+                xml.scopedElement("skipped")</span>
+                    .writeAttribute("message", "TEST_CASE tagged with !mayfail");
+            }
+
+<span style = "background-color:#fdd">            writeAssertions( sectionNode );</span>
+
+
+<span style = "background-color:#fdd">            if( !sectionNode.stdOut.empty() )
+                xml.scopedElement( "system-out" ).writeText( trim( sectionNode.stdOut ), XmlFormatting::Newline );
+            if( !sectionNode.stdErr.empty() )
+                xml.scopedElement( "system-err" ).writeText( trim( sectionNode.stdErr ), XmlFormatting::Newline );
+        }
+        for( auto const&amp; childNode : sectionNode.childSections )
+            if( className.empty() )
+                writeSection( name, "", *childNode, testOkToFail );</span>
+            else
+<span style = "background-color:#fdd">                writeSection( className, name, *childNode, testOkToFail );
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::writeAssertions( SectionNode const&amp; sectionNode ) {
+        for (auto const&amp; assertionOrBenchmark : sectionNode.assertionsAndBenchmarks) {
+            if (assertionOrBenchmark.isAssertion()) {
+                writeAssertion(assertionOrBenchmark.asAssertion());</span>
+            }
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    void JunitReporter::writeAssertion( AssertionStats const&amp; stats ) {
+        AssertionResult const&amp; result = stats.assertionResult;
+        if ( !result.isOk() ||</span>
+             result.getResultType() == ResultWas::ExplicitSkip ) {
+<span style = "background-color:#fdd">            std::string elementName;
+            switch( result.getResultType() ) {</span>
+                case ResultWas::ThrewException:
+                case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">                    elementName = "error";
+                    break;</span>
+                case ResultWas::ExplicitFailure:
+                case ResultWas::ExpressionFailed:
+                case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">                    elementName = "failure";
+                    break;</span>
+                case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">                    elementName = "skipped";
+                    break;</span>
+                // We should never see these here:
+                case ResultWas::Info:
+                case ResultWas::Warning:
+                case ResultWas::Ok:
+                case ResultWas::Unknown:
+                case ResultWas::FailureBit:
+                case ResultWas::Exception:
+<span style = "background-color:#fdd">                    elementName = "internalError";</span>
+                    break;
+            }
+
+<span style = "background-color:#fdd">            XmlWriter::ScopedElement e = xml.scopedElement( elementName );</span>
+
+<span style = "background-color:#fdd">            xml.writeAttribute( "message"_sr, result.getExpression() );
+            xml.writeAttribute( "type"_sr, result.getTestMacroName() );</span>
+
+<span style = "background-color:#fdd">            ReusableStringStream rss;
+            if ( result.getResultType() == ResultWas::ExplicitSkip ) {
+                rss &lt;&lt; "SKIPPED\n";
+            } else {
+                rss &lt;&lt; "FAILED" &lt;&lt; ":\n";
+                if (result.hasExpression()) {
+                    rss &lt;&lt; "  ";
+                    rss &lt;&lt; result.getExpressionInMacro();
+                    rss &lt;&lt; '\n';</span>
+                }
+<span style = "background-color:#fdd">                if (result.hasExpandedExpression()) {
+                    rss &lt;&lt; "with expansion:\n";
+                    rss &lt;&lt; TextFlow::Column(result.getExpandedExpression()).indent(2) &lt;&lt; '\n';</span>
+                }
+            }
+
+<span style = "background-color:#fdd">            if( result.hasMessage() )
+                rss &lt;&lt; result.getMessage() &lt;&lt; '\n';
+            for( auto const&amp; msg : stats.infoMessages )
+                if( msg.type == ResultWas::Info )
+                    rss &lt;&lt; msg.message &lt;&lt; '\n';</span>
+
+<span style = "background-color:#fdd">            rss &lt;&lt; "at " &lt;&lt; result.getSourceInfo();
+            xml.writeText( rss.str(), XmlFormatting::Newline );
+        }
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

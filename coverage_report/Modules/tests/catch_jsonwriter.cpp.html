@@ -1,0 +1,174 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_jsonwriter.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_jsonwriter.hpp&gt;
+
+namespace Catch {
+<span style = "background-color:#fdd">    void JsonUtils::indent( std::ostream&amp; os, std::uint64_t level ) {
+        for ( std::uint64_t i = 0; i &lt; level; ++i ) {
+            os &lt;&lt; "  ";
+        }
+    }</span>
+    void JsonUtils::appendCommaNewline( std::ostream&amp; os,
+                                        bool&amp; should_comma,
+<span style = "background-color:#fdd">                                        std::uint64_t level ) {
+        if ( should_comma ) { os &lt;&lt; ','; }
+        should_comma = true;
+        os &lt;&lt; '\n';
+        indent( os, level );
+    }</span>
+
+    JsonObjectWriter::JsonObjectWriter( std::ostream&amp; os ):
+<span style = "background-color:#fdd">        JsonObjectWriter{ os, 0 } {}</span>
+
+    JsonObjectWriter::JsonObjectWriter( std::ostream&amp; os,
+                                        std::uint64_t indent_level ):
+<span style = "background-color:#fdd">        m_os{ os }, m_indent_level{ indent_level } {
+        m_os &lt;&lt; '{';
+    }</span>
+    JsonObjectWriter::JsonObjectWriter( JsonObjectWriter&amp;&amp; source ):
+<span style = "background-color:#fdd">        m_os{ source.m_os },
+        m_indent_level{ source.m_indent_level },
+        m_should_comma{ source.m_should_comma },
+        m_active{ source.m_active } {
+        source.m_active = false;
+    }</span>
+
+<span style = "background-color:#fdd">    JsonObjectWriter::~JsonObjectWriter() {
+        if ( !m_active ) { return; }</span>
+
+<span style = "background-color:#fdd">        m_os &lt;&lt; '\n';
+        JsonUtils::indent( m_os, m_indent_level );
+        m_os &lt;&lt; '}';
+    }</span>
+
+<span style = "background-color:#fdd">    JsonValueWriter JsonObjectWriter::write( StringRef key ) {
+        JsonUtils::appendCommaNewline(</span>
+            m_os, m_should_comma, m_indent_level + 1 );
+
+<span style = "background-color:#fdd">        m_os &lt;&lt; '"' &lt;&lt; key &lt;&lt; "\": ";
+        return JsonValueWriter{ m_os, m_indent_level + 1 };
+    }</span>
+
+    JsonArrayWriter::JsonArrayWriter( std::ostream&amp; os ):
+<span style = "background-color:#fdd">        JsonArrayWriter{ os, 0 } {}</span>
+    JsonArrayWriter::JsonArrayWriter( std::ostream&amp; os,
+                                      std::uint64_t indent_level ):
+<span style = "background-color:#fdd">        m_os{ os }, m_indent_level{ indent_level } {
+        m_os &lt;&lt; '[';
+    }</span>
+    JsonArrayWriter::JsonArrayWriter( JsonArrayWriter&amp;&amp; source ):
+<span style = "background-color:#fdd">        m_os{ source.m_os },
+        m_indent_level{ source.m_indent_level },
+        m_should_comma{ source.m_should_comma },
+        m_active{ source.m_active } {
+        source.m_active = false;
+    }
+    JsonArrayWriter::~JsonArrayWriter() {
+        if ( !m_active ) { return; }</span>
+
+<span style = "background-color:#fdd">        m_os &lt;&lt; '\n';
+        JsonUtils::indent( m_os, m_indent_level );
+        m_os &lt;&lt; ']';
+    }</span>
+
+<span style = "background-color:#fdd">    JsonObjectWriter JsonArrayWriter::writeObject() {
+        JsonUtils::appendCommaNewline(</span>
+            m_os, m_should_comma, m_indent_level + 1 );
+<span style = "background-color:#fdd">        return JsonObjectWriter{ m_os, m_indent_level + 1 };
+    }</span>
+
+<span style = "background-color:#fdd">    JsonArrayWriter JsonArrayWriter::writeArray() {
+        JsonUtils::appendCommaNewline(</span>
+            m_os, m_should_comma, m_indent_level + 1 );
+<span style = "background-color:#fdd">        return JsonArrayWriter{ m_os, m_indent_level + 1 };
+    }</span>
+
+<span style = "background-color:#fdd">    JsonArrayWriter&amp; JsonArrayWriter::write( bool value ) {
+        return writeImpl( value );
+    }</span>
+
+    JsonValueWriter::JsonValueWriter( std::ostream&amp; os ):
+<span style = "background-color:#fdd">        JsonValueWriter{ os, 0 } {}</span>
+
+    JsonValueWriter::JsonValueWriter( std::ostream&amp; os,
+                                      std::uint64_t indent_level ):
+<span style = "background-color:#fdd">        m_os{ os }, m_indent_level{ indent_level } {}</span>
+
+<span style = "background-color:#fdd">    JsonObjectWriter JsonValueWriter::writeObject() &amp;&amp; {
+        return JsonObjectWriter{ m_os, m_indent_level };
+    }</span>
+
+<span style = "background-color:#fdd">    JsonArrayWriter JsonValueWriter::writeArray() &amp;&amp; {
+        return JsonArrayWriter{ m_os, m_indent_level };
+    }</span>
+
+<span style = "background-color:#fdd">    void JsonValueWriter::write( Catch::StringRef value ) &amp;&amp; {
+        writeImpl( value, true );
+    }</span>
+
+<span style = "background-color:#fdd">    void JsonValueWriter::write( bool value ) &amp;&amp; {
+        writeImpl( value ? "true"_sr : "false"_sr, false );
+    }</span>
+
+<span style = "background-color:#fdd">    void JsonValueWriter::writeImpl( Catch::StringRef value, bool quote ) {
+        if ( quote ) { m_os &lt;&lt; '"'; }
+        for (char c : value) {</span>
+            // Escape list taken from https://www.json.org/json-en.html,
+            // string definition.
+            // Note that while forward slash _can_ be escaped, it does
+            // not have to be, if JSON is not further embedded somewhere
+            // where forward slash is meaningful.
+<span style = "background-color:#fdd">            if ( c == '"' ) {
+                m_os &lt;&lt; "\\\"";
+            } else if ( c == '\\' ) {
+                m_os &lt;&lt; "\\\\";
+            } else if ( c == '\b' ) {
+                m_os &lt;&lt; "\\b";
+            } else if ( c == '\f' ) {
+                m_os &lt;&lt; "\\f";
+            } else if ( c == '\n' ) {
+                m_os &lt;&lt; "\\n";
+            } else if ( c == '\r' ) {
+                m_os &lt;&lt; "\\r";
+            } else if ( c == '\t' ) {
+                m_os &lt;&lt; "\\t";
+            } else {
+                m_os &lt;&lt; c;</span>
+            }
+<span style = "background-color:#fdd">        }
+        if ( quote ) { m_os &lt;&lt; '"'; }
+    }</span>
+
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

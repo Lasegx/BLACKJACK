@@ -1,0 +1,280 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_compact.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_compact.hpp&gt;
+
+#include &lt;catch2/catch_get_random_seed.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/internal/catch_platform.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+
+#include &lt;ostream&gt;
+
+namespace Catch {
+namespace {
+
+    // Colour::LightGrey
+    static constexpr Colour::Code compactDimColour = Colour::FileName;
+
+#ifdef CATCH_PLATFORM_MAC
+    static constexpr Catch::StringRef compactFailedString = "FAILED"_sr;
+    static constexpr Catch::StringRef compactPassedString = "PASSED"_sr;
+#else
+    static constexpr Catch::StringRef compactFailedString = "failed"_sr;
+    static constexpr Catch::StringRef compactPassedString = "passed"_sr;
+#endif
+
+// Implementation of CompactReporter formatting
+class AssertionPrinter {
+public:
+    AssertionPrinter&amp; operator= (AssertionPrinter const&amp;) = delete;
+    AssertionPrinter(AssertionPrinter const&amp;) = delete;
+    AssertionPrinter(std::ostream&amp; _stream, AssertionStats const&amp; _stats, bool _printInfoMessages, ColourImpl* colourImpl_)
+<span style = "background-color:#fdd">        : stream(_stream)
+        , result(_stats.assertionResult)
+        , messages(_stats.infoMessages)
+        , itMessage(_stats.infoMessages.begin())
+        , printInfoMessages(_printInfoMessages)
+        , colourImpl(colourImpl_)
+    {}</span>
+
+<span style = "background-color:#fdd">    void print() {
+        printSourceInfo();</span>
+
+<span style = "background-color:#fdd">        itMessage = messages.begin();</span>
+
+<span style = "background-color:#fdd">        switch (result.getResultType()) {</span>
+        case ResultWas::Ok:
+<span style = "background-color:#fdd">            printResultType(Colour::ResultSuccess, compactPassedString);
+            printOriginalExpression();
+            printReconstructedExpression();
+            if (!result.hasExpression())
+                printRemainingMessages(Colour::None);</span>
+            else
+<span style = "background-color:#fdd">                printRemainingMessages();
+            break;</span>
+        case ResultWas::ExpressionFailed:
+<span style = "background-color:#fdd">            if (result.isOk())
+                printResultType(Colour::ResultSuccess, compactFailedString + " - but was ok"_sr);</span>
+            else
+<span style = "background-color:#fdd">                printResultType(Colour::Error, compactFailedString);
+            printOriginalExpression();
+            printReconstructedExpression();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::ThrewException:
+<span style = "background-color:#fdd">            printResultType(Colour::Error, compactFailedString);
+            printIssue("unexpected exception with message:");
+            printMessage();
+            printExpressionWas();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">            printResultType(Colour::Error, compactFailedString);
+            printIssue("fatal error condition with message:");
+            printMessage();
+            printExpressionWas();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">            printResultType(Colour::Error, compactFailedString);
+            printIssue("expected exception, got none");
+            printExpressionWas();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::Info:
+<span style = "background-color:#fdd">            printResultType(Colour::None, "info"_sr);
+            printMessage();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::Warning:
+<span style = "background-color:#fdd">            printResultType(Colour::None, "warning"_sr);
+            printMessage();
+            printRemainingMessages();
+            break;</span>
+        case ResultWas::ExplicitFailure:
+<span style = "background-color:#fdd">            printResultType(Colour::Error, compactFailedString);
+            printIssue("explicitly");
+            printRemainingMessages(Colour::None);
+            break;</span>
+        case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">            printResultType(Colour::Skip, "skipped"_sr);
+            printMessage();
+            printRemainingMessages();
+            break;</span>
+            // These cases are here to prevent compiler warnings
+        case ResultWas::Unknown:
+        case ResultWas::FailureBit:
+        case ResultWas::Exception:
+<span style = "background-color:#fdd">            printResultType(Colour::Error, "** internal error **");</span>
+            break;
+        }
+<span style = "background-color:#fdd">    }</span>
+
+private:
+<span style = "background-color:#fdd">    void printSourceInfo() const {
+        stream &lt;&lt; colourImpl-&gt;guardColour( Colour::FileName )</span>
+               &lt;&lt; result.getSourceInfo() &lt;&lt; ':';
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printResultType(Colour::Code colour, StringRef passOrFail) const {
+        if (!passOrFail.empty()) {
+            stream &lt;&lt; colourImpl-&gt;guardColour(colour) &lt;&lt; ' ' &lt;&lt; passOrFail;
+            stream &lt;&lt; ':';</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printIssue(char const* issue) const {
+        stream &lt;&lt; ' ' &lt;&lt; issue;
+    }</span>
+
+<span style = "background-color:#fdd">    void printExpressionWas() {
+        if (result.hasExpression()) {
+            stream &lt;&lt; ';';</span>
+            {
+<span style = "background-color:#fdd">                stream &lt;&lt; colourImpl-&gt;guardColour(compactDimColour) &lt;&lt; " expression was:";</span>
+            }
+<span style = "background-color:#fdd">            printOriginalExpression();</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printOriginalExpression() const {
+        if (result.hasExpression()) {
+            stream &lt;&lt; ' ' &lt;&lt; result.getExpression();</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printReconstructedExpression() const {
+        if (result.hasExpandedExpression()) {
+            stream &lt;&lt; colourImpl-&gt;guardColour(compactDimColour) &lt;&lt; " for: ";
+            stream &lt;&lt; result.getExpandedExpression();</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printMessage() {
+        if (itMessage != messages.end()) {
+            stream &lt;&lt; " '" &lt;&lt; itMessage-&gt;message &lt;&lt; '\'';
+            ++itMessage;</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void printRemainingMessages(Colour::Code colour = compactDimColour) {
+        if (itMessage == messages.end())
+            return;</span>
+
+<span style = "background-color:#fdd">        const auto itEnd = messages.cend();
+        const auto N = static_cast&lt;std::size_t&gt;(itEnd - itMessage);</span>
+
+<span style = "background-color:#fdd">        stream &lt;&lt; colourImpl-&gt;guardColour( colour ) &lt;&lt; " with "</span>
+               &lt;&lt; pluralise( N, "message"_sr ) &lt;&lt; ':';
+
+<span style = "background-color:#fdd">        while (itMessage != itEnd) {</span>
+            // If this assertion is a warning ignore any INFO messages
+<span style = "background-color:#fdd">            if (printInfoMessages || itMessage-&gt;type != ResultWas::Info) {
+                printMessage();
+                if (itMessage != itEnd) {
+                    stream &lt;&lt; colourImpl-&gt;guardColour(compactDimColour) &lt;&lt; " and";</span>
+                }
+<span style = "background-color:#fdd">                continue;</span>
+            }
+<span style = "background-color:#fdd">            ++itMessage;
+        }
+    }</span>
+
+private:
+    std::ostream&amp; stream;
+    AssertionResult const&amp; result;
+    std::vector&lt;MessageInfo&gt; const&amp; messages;
+    std::vector&lt;MessageInfo&gt;::const_iterator itMessage;
+    bool printInfoMessages;
+    ColourImpl* colourImpl;
+};
+
+} // anon namespace
+
+<span style = "background-color:#fdd">        std::string CompactReporter::getDescription() {
+            return "Reports test results on a single line, suitable for IDEs";
+        }</span>
+
+<span style = "background-color:#fdd">        void CompactReporter::noMatchingTestCases( StringRef unmatchedSpec ) {
+            m_stream &lt;&lt; "No test cases matched '" &lt;&lt; unmatchedSpec &lt;&lt; "'\n";
+        }</span>
+
+<span style = "background-color:#fdd">        void CompactReporter::testRunStarting( TestRunInfo const&amp; ) {
+            if ( m_config-&gt;testSpec().hasFilters() ) {
+                m_stream &lt;&lt; m_colour-&gt;guardColour( Colour::BrightYellow )</span>
+                         &lt;&lt; "Filters: "
+                         &lt;&lt; m_config-&gt;testSpec()
+                         &lt;&lt; '\n';
+            }
+<span style = "background-color:#fdd">            m_stream &lt;&lt; "RNG seed: " &lt;&lt; getSeed() &lt;&lt; '\n';
+        }</span>
+
+<span style = "background-color:#fdd">        void CompactReporter::assertionEnded( AssertionStats const&amp; _assertionStats ) {
+            AssertionResult const&amp; result = _assertionStats.assertionResult;</span>
+
+<span style = "background-color:#fdd">            bool printInfoMessages = true;</span>
+
+            // Drop out if result was successful and we're not printing those
+<span style = "background-color:#fdd">            if( !m_config-&gt;includeSuccessfulResults() &amp;&amp; result.isOk() ) {
+                if( result.getResultType() != ResultWas::Warning &amp;&amp; result.getResultType() != ResultWas::ExplicitSkip )
+                    return;
+                printInfoMessages = false;</span>
+            }
+
+<span style = "background-color:#fdd">            AssertionPrinter printer( m_stream, _assertionStats, printInfoMessages, m_colour.get() );
+            printer.print();</span>
+
+<span style = "background-color:#fdd">            m_stream &lt;&lt; '\n' &lt;&lt; std::flush;
+        }</span>
+
+<span style = "background-color:#fdd">        void CompactReporter::sectionEnded(SectionStats const&amp; _sectionStats) {
+            double dur = _sectionStats.durationInSeconds;
+            if ( shouldShowDuration( *m_config, dur ) ) {
+                m_stream &lt;&lt; getFormattedDuration( dur ) &lt;&lt; " s: " &lt;&lt; _sectionStats.sectionInfo.name &lt;&lt; '\n' &lt;&lt; std::flush;</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        void CompactReporter::testRunEnded( TestRunStats const&amp; _testRunStats ) {
+            printTestRunTotals( m_stream, *m_colour, _testRunStats.totals );
+            m_stream &lt;&lt; "\n\n" &lt;&lt; std::flush;
+            StreamingReporterBase::testRunEnded( _testRunStats );
+        }</span>
+
+<span style = "background-color:#fdd">        CompactReporter::~CompactReporter() = default;</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

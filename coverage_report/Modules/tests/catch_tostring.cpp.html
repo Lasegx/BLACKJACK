@@ -1,0 +1,280 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_tostring.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/internal/catch_context.hpp&gt;
+#include &lt;catch2/internal/catch_polyfills.hpp&gt;
+
+#include &lt;cmath&gt;
+#include &lt;iomanip&gt;
+
+namespace Catch {
+
+namespace Detail {
+
+    namespace {
+        const int hexThreshold = 255;
+
+        struct Endianness {
+            enum Arch { Big, Little };
+
+<span style = "background-color:#fdd">            static Arch which() {
+                int one = 1;</span>
+                // If the lowest byte we read is non-zero, we can assume
+                // that little endian format is used.
+<span style = "background-color:#fdd">                auto value = *reinterpret_cast&lt;char*&gt;(&amp;one);
+                return value ? Little : Big;
+            }</span>
+        };
+
+        template&lt;typename T&gt;
+<span style = "background-color:#fdd">        std::string fpToString(T value, int precision) {
+            if (Catch::isnan(value)) {
+                return "nan";</span>
+            }
+
+<span style = "background-color:#fdd">            ReusableStringStream rss;
+            rss &lt;&lt; std::setprecision(precision)</span>
+                &lt;&lt; std::fixed
+                &lt;&lt; value;
+<span style = "background-color:#fdd">            std::string d = rss.str();
+            std::size_t i = d.find_last_not_of('0');
+            if (i != std::string::npos &amp;&amp; i != d.size() - 1) {
+                if (d[i] == '.')
+                    i++;
+                d = d.substr(0, i + 1);</span>
+            }
+<span style = "background-color:#fdd">            return d;
+        }</span>
+    } // end unnamed namespace
+
+<span style = "background-color:#fdd">    std::string convertIntoString(StringRef string, bool escape_invisibles) {
+        std::string ret;</span>
+        // This is enough for the "don't escape invisibles" case, and a good
+        // lower bound on the "escape invisibles" case.
+<span style = "background-color:#fdd">        ret.reserve(string.size() + 2);</span>
+
+<span style = "background-color:#fdd">        if (!escape_invisibles) {
+            ret += '"';
+            ret += string;
+            ret += '"';
+            return ret;</span>
+        }
+
+<span style = "background-color:#fdd">        ret += '"';
+        for (char c : string) {
+            switch (c) {</span>
+            case '\r':
+<span style = "background-color:#fdd">                ret.append("\\r");
+                break;</span>
+            case '\n':
+<span style = "background-color:#fdd">                ret.append("\\n");
+                break;</span>
+            case '\t':
+<span style = "background-color:#fdd">                ret.append("\\t");
+                break;</span>
+            case '\f':
+<span style = "background-color:#fdd">                ret.append("\\f");
+                break;</span>
+            default:
+<span style = "background-color:#fdd">                ret.push_back(c);</span>
+                break;
+            }
+<span style = "background-color:#fdd">        }
+        ret += '"';</span>
+
+<span style = "background-color:#fdd">        return ret;
+    }</span>
+
+<span style = "background-color:#fdd">    std::string convertIntoString(StringRef string) {
+        return convertIntoString(string, getCurrentContext().getConfig()-&gt;showInvisibles());
+    }</span>
+
+<span style = "background-color:#fdd">    std::string rawMemoryToString( const void *object, std::size_t size ) {</span>
+        // Reverse order for little endian architectures
+<span style = "background-color:#fdd">        int i = 0, end = static_cast&lt;int&gt;( size ), inc = 1;
+        if( Endianness::which() == Endianness::Little ) {
+            i = end-1;
+            end = inc = -1;</span>
+        }
+
+<span style = "background-color:#fdd">        unsigned char const *bytes = static_cast&lt;unsigned char const *&gt;(object);
+        ReusableStringStream rss;
+        rss &lt;&lt; "0x" &lt;&lt; std::setfill('0') &lt;&lt; std::hex;
+        for( ; i != end; i += inc )
+             rss &lt;&lt; std::setw(2) &lt;&lt; static_cast&lt;unsigned&gt;(bytes[i]);
+       return rss.str();
+    }</span>
+} // end Detail namespace
+
+
+
+//// ======================================================= ////
+//
+//   Out-of-line defs for full specialization of StringMaker
+//
+//// ======================================================= ////
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;std::string&gt;::convert(const std::string&amp; str) {
+    return Detail::convertIntoString( str );
+}</span>
+
+#ifdef CATCH_CONFIG_CPP17_STRING_VIEW
+<span style = "background-color:#fdd">std::string StringMaker&lt;std::string_view&gt;::convert(std::string_view str) {
+    return Detail::convertIntoString( StringRef( str.data(), str.size() ) );
+}</span>
+#endif
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;char const*&gt;::convert(char const* str) {
+    if (str) {
+        return Detail::convertIntoString( str );
+    } else {
+        return{ "{null string}" };</span>
+    }
+<span style = "background-color:#fdd">}
+std::string StringMaker&lt;char*&gt;::convert(char* str) {
+    if (str) {
+        return Detail::convertIntoString( str );
+    } else {
+        return{ "{null string}" };</span>
+    }
+<span style = "background-color:#fdd">}</span>
+
+#ifdef CATCH_CONFIG_WCHAR
+<span style = "background-color:#fdd">std::string StringMaker&lt;std::wstring&gt;::convert(const std::wstring&amp; wstr) {
+    std::string s;
+    s.reserve(wstr.size());
+    for (auto c : wstr) {
+        s += (c &lt;= 0xff) ? static_cast&lt;char&gt;(c) : '?';
+    }
+    return ::Catch::Detail::stringify(s);
+}</span>
+
+# ifdef CATCH_CONFIG_CPP17_STRING_VIEW
+<span style = "background-color:#fdd">std::string StringMaker&lt;std::wstring_view&gt;::convert(std::wstring_view str) {
+    return StringMaker&lt;std::wstring&gt;::convert(std::wstring(str));
+}</span>
+# endif
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;wchar_t const*&gt;::convert(wchar_t const * str) {
+    if (str) {
+        return ::Catch::Detail::stringify(std::wstring{ str });
+    } else {
+        return{ "{null string}" };</span>
+    }
+<span style = "background-color:#fdd">}
+std::string StringMaker&lt;wchar_t *&gt;::convert(wchar_t * str) {
+    if (str) {
+        return ::Catch::Detail::stringify(std::wstring{ str });
+    } else {
+        return{ "{null string}" };</span>
+    }
+<span style = "background-color:#fdd">}</span>
+#endif
+
+#if defined(CATCH_CONFIG_CPP17_BYTE)
+#include &lt;cstddef&gt;
+<span style = "background-color:#fdd">std::string StringMaker&lt;std::byte&gt;::convert(std::byte value) {
+    return ::Catch::Detail::stringify(std::to_integer&lt;unsigned long long&gt;(value));
+}</span>
+#endif // defined(CATCH_CONFIG_CPP17_BYTE)
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;int&gt;::convert(int value) {
+    return ::Catch::Detail::stringify(static_cast&lt;long long&gt;(value));
+}
+std::string StringMaker&lt;long&gt;::convert(long value) {
+    return ::Catch::Detail::stringify(static_cast&lt;long long&gt;(value));
+}
+std::string StringMaker&lt;long long&gt;::convert(long long value) {
+    ReusableStringStream rss;
+    rss &lt;&lt; value;
+    if (value &gt; Detail::hexThreshold) {
+        rss &lt;&lt; " (0x" &lt;&lt; std::hex &lt;&lt; value &lt;&lt; ')';</span>
+    }
+<span style = "background-color:#fdd">    return rss.str();
+}</span>
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;unsigned int&gt;::convert(unsigned int value) {
+    return ::Catch::Detail::stringify(static_cast&lt;unsigned long long&gt;(value));
+}
+std::string StringMaker&lt;unsigned long&gt;::convert(unsigned long value) {
+    return ::Catch::Detail::stringify(static_cast&lt;unsigned long long&gt;(value));
+}
+std::string StringMaker&lt;unsigned long long&gt;::convert(unsigned long long value) {
+    ReusableStringStream rss;
+    rss &lt;&lt; value;
+    if (value &gt; Detail::hexThreshold) {
+        rss &lt;&lt; " (0x" &lt;&lt; std::hex &lt;&lt; value &lt;&lt; ')';</span>
+    }
+<span style = "background-color:#fdd">    return rss.str();
+}</span>
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;signed char&gt;::convert(signed char value) {
+    if (value == '\r') {
+        return "'\\r'";
+    } else if (value == '\f') {
+        return "'\\f'";
+    } else if (value == '\n') {
+        return "'\\n'";
+    } else if (value == '\t') {
+        return "'\\t'";
+    } else if ('\0' &lt;= value &amp;&amp; value &lt; ' ') {
+        return ::Catch::Detail::stringify(static_cast&lt;unsigned int&gt;(value));
+    } else {
+        char chstr[] = "' '";
+        chstr[1] = value;
+        return chstr;</span>
+    }
+<span style = "background-color:#fdd">}
+std::string StringMaker&lt;char&gt;::convert(char c) {
+    return ::Catch::Detail::stringify(static_cast&lt;signed char&gt;(c));
+}
+std::string StringMaker&lt;unsigned char&gt;::convert(unsigned char c) {
+    return ::Catch::Detail::stringify(static_cast&lt;char&gt;(c));
+}</span>
+
+int StringMaker&lt;float&gt;::precision = 5;
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;float&gt;::convert(float value) {
+    return Detail::fpToString(value, precision) + 'f';
+}</span>
+
+int StringMaker&lt;double&gt;::precision = 10;
+
+<span style = "background-color:#fdd">std::string StringMaker&lt;double&gt;::convert(double value) {
+    return Detail::fpToString(value, precision);
+}</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

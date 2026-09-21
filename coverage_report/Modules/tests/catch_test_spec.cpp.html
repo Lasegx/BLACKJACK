@@ -1,0 +1,167 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_spec.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_testcase.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_registry_impl.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;string&gt;
+#include &lt;vector&gt;
+#include &lt;ostream&gt;
+
+namespace Catch {
+
+    TestSpec::Pattern::Pattern( std::string const&amp; name )
+<span style = "background-color:#fdd">    : m_name( name )
+    {}</span>
+
+<span style = "background-color:#fdd">    TestSpec::Pattern::~Pattern() = default;</span>
+
+<span style = "background-color:#fdd">    std::string const&amp; TestSpec::Pattern::name() const {
+        return m_name;
+    }</span>
+
+
+    TestSpec::NamePattern::NamePattern( std::string const&amp; name, std::string const&amp; filterString )
+<span style = "background-color:#fdd">    : Pattern( filterString )
+    , m_wildcardPattern( toLower( name ), CaseSensitive::No )
+    {}</span>
+
+<span style = "background-color:#fdd">    bool TestSpec::NamePattern::matches( TestCaseInfo const&amp; testCase ) const {
+        return m_wildcardPattern.matches( testCase.name );
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpec::NamePattern::serializeTo( std::ostream&amp; out ) const {
+        out &lt;&lt; '"' &lt;&lt; name() &lt;&lt; '"';
+    }</span>
+
+
+    TestSpec::TagPattern::TagPattern( std::string const&amp; tag, std::string const&amp; filterString )
+<span style = "background-color:#fdd">    : Pattern( filterString )
+    , m_tag( tag )
+    {}</span>
+
+<span style = "background-color:#fdd">    bool TestSpec::TagPattern::matches( TestCaseInfo const&amp; testCase ) const {
+        return std::find( begin( testCase.tags ),</span>
+                          end( testCase.tags ),
+                          Tag( m_tag ) ) != end( testCase.tags );
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void TestSpec::TagPattern::serializeTo( std::ostream&amp; out ) const {
+        out &lt;&lt; name();
+    }</span>
+
+<span style = "background-color:#fdd">    bool TestSpec::Filter::matches( TestCaseInfo const&amp; testCase ) const {
+        bool should_use = !testCase.isHidden();
+        for (auto const&amp; pattern : m_required) {
+            should_use = true;
+            if (!pattern-&gt;matches(testCase)) {
+                return false;</span>
+            }
+<span style = "background-color:#fdd">        }
+        for (auto const&amp; pattern : m_forbidden) {
+            if (pattern-&gt;matches(testCase)) {
+                return false;</span>
+            }
+<span style = "background-color:#fdd">        }
+        return should_use;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpec::Filter::serializeTo( std::ostream&amp; out ) const {
+        bool first = true;
+        for ( auto const&amp; pattern : m_required ) {
+            if ( !first ) {
+                out &lt;&lt; ' ';</span>
+            }
+<span style = "background-color:#fdd">            out &lt;&lt; *pattern;
+            first = false;
+        }
+        for ( auto const&amp; pattern : m_forbidden ) {
+            if ( !first ) {
+                out &lt;&lt; ' ';</span>
+            }
+<span style = "background-color:#fdd">            out &lt;&lt; *pattern;
+            first = false;
+        }
+    }</span>
+
+
+<span style = "background-color:#fdd">    std::string TestSpec::extractFilterName( Filter const&amp; filter ) {
+        Catch::ReusableStringStream sstr;
+        sstr &lt;&lt; filter;
+        return sstr.str();
+    }</span>
+
+<span style = "background-color:#dfd">    bool TestSpec::hasFilters() const {
+        return !m_filters.empty();
+    }</span>
+
+<span style = "background-color:#fdd">    bool TestSpec::matches( TestCaseInfo const&amp; testCase ) const {
+        return std::any_of( m_filters.begin(), m_filters.end(), [&amp;]( Filter const&amp; f ){ return f.matches( testCase ); } );
+    }</span>
+
+<span style = "background-color:#fdd">    TestSpec::Matches TestSpec::matchesByFilter( std::vector&lt;TestCaseHandle&gt; const&amp; testCases, IConfig const&amp; config ) const {
+        Matches matches;
+        matches.reserve( m_filters.size() );
+        for ( auto const&amp; filter : m_filters ) {
+            std::vector&lt;TestCaseHandle const*&gt; currentMatches;
+            for ( auto const&amp; test : testCases )
+                if ( isThrowSafe( test, config ) &amp;&amp;</span>
+                     filter.matches( test.getTestCaseInfo() ) )
+<span style = "background-color:#fdd">                    currentMatches.emplace_back( &amp;test );
+            matches.push_back(</span>
+                FilterMatch{ extractFilterName( filter ), currentMatches } );
+<span style = "background-color:#fdd">        }
+        return matches;
+    }</span>
+
+<span style = "background-color:#dfd">    const TestSpec::vectorStrings&amp; TestSpec::getInvalidSpecs() const {
+        return m_invalidSpecs;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestSpec::serializeTo( std::ostream&amp; out ) const {
+        bool first = true;
+        for ( auto const&amp; filter : m_filters ) {
+            if ( !first ) {
+                out &lt;&lt; ',';</span>
+            }
+<span style = "background-color:#fdd">            out &lt;&lt; filter;
+            first = false;
+        }
+    }</span>
+
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

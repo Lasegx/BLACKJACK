@@ -1,0 +1,366 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_decomposer.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_DECOMPOSER_HPP_INCLUDED
+#define CATCH_DECOMPOSER_HPP_INCLUDED
+
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+#include &lt;catch2/internal/catch_compare_traits.hpp&gt;
+#include &lt;catch2/internal/catch_test_failure_exception.hpp&gt;
+#include &lt;catch2/internal/catch_logical_traits.hpp&gt;
+
+#include &lt;type_traits&gt;
+#include &lt;iosfwd&gt;
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4389) // '==' : signed/unsigned mismatch
+#pragma warning(disable:4018) // more "signed/unsigned mismatch"
+#pragma warning(disable:4312) // Converting int to T* using reinterpret_cast (issue on x64 platform)
+#pragma warning(disable:4180) // qualifier applied to function type has no meaning
+#pragma warning(disable:4800) // Forcing result to true or false
+#endif
+
+#ifdef __clang__
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wsign-compare"
+#elif defined __GNUC__
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wsign-compare"
+#endif
+
+namespace Catch {
+
+    template &lt;typename T&gt;
+    struct always_false : std::false_type {};
+
+    class ITransientExpression {
+        bool m_isBinaryExpression;
+        bool m_result;
+
+    public:
+<span style = "background-color:#fdd">        auto isBinaryExpression() const -&gt; bool { return m_isBinaryExpression; }</span>
+<span style = "background-color:#dfd">        auto getResult() const -&gt; bool { return m_result; }</span>
+        virtual void streamReconstructedExpression( std::ostream &amp;os ) const = 0;
+
+        ITransientExpression( bool isBinaryExpression, bool result )
+<span style = "background-color:#dfd">        :   m_isBinaryExpression( isBinaryExpression ),
+            m_result( result )
+        {}</span>
+
+        ITransientExpression() = default;
+        ITransientExpression(ITransientExpression const&amp;) = default;
+        ITransientExpression&amp; operator=(ITransientExpression const&amp;) = default;
+
+        // We don't actually need a virtual destructor, but many static analysers
+        // complain if it's not here :-(
+        virtual ~ITransientExpression(); // = default;
+
+<span style = "background-color:#fdd">        friend std::ostream&amp; operator&lt;&lt;(std::ostream&amp; out, ITransientExpression const&amp; expr) {
+            expr.streamReconstructedExpression(out);
+            return out;
+        }</span>
+    };
+
+    void formatReconstructedExpression( std::ostream &amp;os, std::string const&amp; lhs, StringRef op, std::string const&amp; rhs );
+
+    template&lt;typename LhsT, typename RhsT&gt;
+    class BinaryExpr  : public ITransientExpression {
+        LhsT m_lhs;
+        StringRef m_op;
+        RhsT m_rhs;
+
+<span style = "background-color:#fdd">        void streamReconstructedExpression( std::ostream &amp;os ) const override {
+            formatReconstructedExpression</span>
+                    ( os, Catch::Detail::stringify( m_lhs ), m_op, Catch::Detail::stringify( m_rhs ) );
+<span style = "background-color:#fdd">        }</span>
+
+    public:
+        BinaryExpr( bool comparisonResult, LhsT lhs, StringRef op, RhsT rhs )
+<span style = "background-color:#dfd">        :   ITransientExpression{ true, comparisonResult },
+            m_lhs( lhs ),
+            m_op( op ),
+            m_rhs( rhs )
+        {}</span>
+
+        template&lt;typename T&gt;
+        auto operator &amp;&amp; ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator || ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator == ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator != ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator &gt; ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator &lt; ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator &gt;= ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename T&gt;
+        auto operator &lt;= ( T ) const -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; const {
+            static_assert(always_false&lt;T&gt;::value,
+            "chained comparisons are not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+    };
+
+    template&lt;typename LhsT&gt;
+    class UnaryExpr : public ITransientExpression {
+        LhsT m_lhs;
+
+<span style = "background-color:#fdd">        void streamReconstructedExpression( std::ostream &amp;os ) const override {
+            os &lt;&lt; Catch::Detail::stringify( m_lhs );
+        }</span>
+
+    public:
+        explicit UnaryExpr( LhsT lhs )
+<span style = "background-color:#dfd">        :   ITransientExpression{ false, static_cast&lt;bool&gt;(lhs) },
+            m_lhs( lhs )
+        {}</span>
+    };
+
+
+    template&lt;typename LhsT&gt;
+    class ExprLhs {
+        LhsT m_lhs;
+    public:
+<span style = "background-color:#dfd">        explicit ExprLhs( LhsT lhs ) : m_lhs( lhs ) {}</span>
+
+#define CATCH_INTERNAL_DEFINE_EXPRESSION_EQUALITY_OPERATOR( id, op )           \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT&amp;&amp; rhs )                       \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;,      \
+                                Detail::negation&lt;std::is_arithmetic&lt;           \
+                                    std::remove_reference_t&lt;RhsT&gt;&gt;&gt;&gt;::value,   \
+            BinaryExpr&lt;LhsT, RhsT const&amp;&gt;&gt; {                                   \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;,      \
+                                std::is_arithmetic&lt;RhsT&gt;&gt;::value,              \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;                                               \
+                Detail::negation&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;&gt;,    \
+                Detail::is_eq_0_comparable&lt;LhsT&gt;,                              \
+              /* We allow long because we want `ptr op NULL` to be accepted */ \
+                Detail::disjunction&lt;std::is_same&lt;RhsT, int&gt;,                   \
+                                    std::is_same&lt;RhsT, long&gt;&gt;&gt;::value,         \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        if ( rhs != 0 ) { throw_test_failure_exception(); }                    \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op 0 ), lhs.m_lhs, #op##_sr, rhs };   \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;                                               \
+                Detail::negation&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;&gt;,    \
+                Detail::is_eq_0_comparable&lt;RhsT&gt;,                              \
+              /* We allow long because we want `ptr op NULL` to be accepted */ \
+                Detail::disjunction&lt;std::is_same&lt;LhsT, int&gt;,                   \
+                                    std::is_same&lt;LhsT, long&gt;&gt;&gt;::value,         \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        if ( lhs.m_lhs != 0 ) { throw_test_failure_exception(); }              \
+        return { static_cast&lt;bool&gt;( 0 op rhs ), lhs.m_lhs, #op##_sr, rhs };    \
+    }
+
+<span style = "background-color:#dfd">        CATCH_INTERNAL_DEFINE_EXPRESSION_EQUALITY_OPERATOR( eq, == )
+        CATCH_INTERNAL_DEFINE_EXPRESSION_EQUALITY_OPERATOR( ne, != )</span>
+
+    #undef CATCH_INTERNAL_DEFINE_EXPRESSION_EQUALITY_OPERATOR
+
+#define CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR( id, op )         \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT&amp;&amp; rhs )                       \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;,      \
+                                Detail::negation&lt;std::is_arithmetic&lt;           \
+                                    std::remove_reference_t&lt;RhsT&gt;&gt;&gt;&gt;::value,   \
+            BinaryExpr&lt;LhsT, RhsT const&amp;&gt;&gt; {                                   \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;,      \
+                                std::is_arithmetic&lt;RhsT&gt;&gt;::value,              \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;                                               \
+                Detail::negation&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;&gt;,    \
+                Detail::is_##id##_0_comparable&lt;LhsT&gt;,                          \
+                std::is_same&lt;RhsT, int&gt;&gt;::value,                               \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        if ( rhs != 0 ) { throw_test_failure_exception(); }                    \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op 0 ), lhs.m_lhs, #op##_sr, rhs };   \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;                                                    \
+            Detail::conjunction&lt;                                               \
+                Detail::negation&lt;Detail::is_##id##_comparable&lt;LhsT, RhsT&gt;&gt;,    \
+                Detail::is_##id##_0_comparable&lt;RhsT&gt;,                          \
+                std::is_same&lt;LhsT, int&gt;&gt;::value,                               \
+            BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                                          \
+        if ( lhs.m_lhs != 0 ) { throw_test_failure_exception(); }              \
+        return { static_cast&lt;bool&gt;( 0 op rhs ), lhs.m_lhs, #op##_sr, rhs };    \
+    }
+
+        CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR( lt, &lt; )
+        CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR( le, &lt;= )
+<span style = "background-color:#dfd">        CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR( gt, &gt; )
+        CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR( ge, &gt;= )</span>
+
+    #undef CATCH_INTERNAL_DEFINE_EXPRESSION_COMPARISON_OPERATOR
+
+
+#define CATCH_INTERNAL_DEFINE_EXPRESSION_OPERATOR( op )                        \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT&amp;&amp; rhs )                       \
+        -&gt;std::enable_if_t&lt;                                                    \
+            !std::is_arithmetic&lt;std::remove_reference_t&lt;RhsT&gt;&gt;::value,         \
+            BinaryExpr&lt;LhsT, RhsT const&amp;&gt;&gt; {                                   \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }                                                                          \
+    template &lt;typename RhsT&gt;                                                   \
+    friend auto operator op( ExprLhs&amp;&amp; lhs, RhsT rhs )                         \
+        -&gt;std::enable_if_t&lt;std::is_arithmetic&lt;RhsT&gt;::value,                    \
+                           BinaryExpr&lt;LhsT, RhsT&gt;&gt; {                           \
+        return {                                                               \
+            static_cast&lt;bool&gt;( lhs.m_lhs op rhs ), lhs.m_lhs, #op##_sr, rhs }; \
+    }
+
+        CATCH_INTERNAL_DEFINE_EXPRESSION_OPERATOR(|)
+        CATCH_INTERNAL_DEFINE_EXPRESSION_OPERATOR(&amp;)
+        CATCH_INTERNAL_DEFINE_EXPRESSION_OPERATOR(^)
+
+    #undef CATCH_INTERNAL_DEFINE_EXPRESSION_OPERATOR
+
+        template&lt;typename RhsT&gt;
+        friend auto operator &amp;&amp; ( ExprLhs &amp;&amp;, RhsT &amp;&amp; ) -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; {
+            static_assert(always_false&lt;RhsT&gt;::value,
+            "operator&amp;&amp; is not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+        template&lt;typename RhsT&gt;
+        friend auto operator || ( ExprLhs &amp;&amp;, RhsT &amp;&amp; ) -&gt; BinaryExpr&lt;LhsT, RhsT const&amp;&gt; {
+            static_assert(always_false&lt;RhsT&gt;::value,
+            "operator|| is not supported inside assertions, "
+            "wrap the expression inside parentheses, or decompose it");
+        }
+
+<span style = "background-color:#dfd">        auto makeUnaryExpr() const -&gt; UnaryExpr&lt;LhsT&gt; {
+            return UnaryExpr&lt;LhsT&gt;{ m_lhs };
+        }</span>
+    };
+
+    struct Decomposer {
+        template&lt;typename T, std::enable_if_t&lt;!std::is_arithmetic&lt;std::remove_reference_t&lt;T&gt;&gt;::value, int&gt; = 0&gt;
+<span style = "background-color:#dfd">        friend auto operator &lt;= ( Decomposer &amp;&amp;, T &amp;&amp; lhs ) -&gt; ExprLhs&lt;T const&amp;&gt; {
+            return ExprLhs&lt;const T&amp;&gt;{ lhs };
+        }</span>
+
+        template&lt;typename T, std::enable_if_t&lt;std::is_arithmetic&lt;T&gt;::value, int&gt; = 0&gt;
+<span style = "background-color:#dfd">        friend auto operator &lt;= ( Decomposer &amp;&amp;, T value ) -&gt; ExprLhs&lt;T&gt; {
+            return ExprLhs&lt;T&gt;{ value };
+        }</span>
+    };
+
+} // end namespace Catch
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
+#ifdef __clang__
+#  pragma clang diagnostic pop
+#elif defined __GNUC__
+#  pragma GCC diagnostic pop
+#endif
+
+#endif // CATCH_DECOMPOSER_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

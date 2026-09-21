@@ -1,0 +1,185 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_cumulative_base.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_cumulative_base.hpp&gt;
+
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;cassert&gt;
+
+namespace Catch {
+    namespace {
+        struct BySectionInfo {
+<span style = "background-color:#fdd">            BySectionInfo( SectionInfo const&amp; other ): m_other( other ) {}</span>
+            BySectionInfo( BySectionInfo const&amp; other ):
+                m_other( other.m_other ) {}
+            bool operator()(
+                Detail::unique_ptr&lt;CumulativeReporterBase::SectionNode&gt; const&amp;
+<span style = "background-color:#fdd">                    node ) const {
+                return (</span>
+                    ( node-&gt;stats.sectionInfo.name == m_other.name ) &amp;&amp;
+                    ( node-&gt;stats.sectionInfo.lineInfo == m_other.lineInfo ) );
+<span style = "background-color:#fdd">            }</span>
+            void operator=( BySectionInfo const&amp; ) = delete;
+
+        private:
+            SectionInfo const&amp; m_other;
+        };
+
+    } // namespace
+
+    namespace Detail {
+        AssertionOrBenchmarkResult::AssertionOrBenchmarkResult(
+            AssertionStats const&amp; assertion ):
+<span style = "background-color:#fdd">            m_assertion( assertion ) {}</span>
+
+        AssertionOrBenchmarkResult::AssertionOrBenchmarkResult(
+            BenchmarkStats&lt;&gt; const&amp; benchmark ):
+<span style = "background-color:#fdd">            m_benchmark( benchmark ) {}</span>
+
+<span style = "background-color:#fdd">        bool AssertionOrBenchmarkResult::isAssertion() const {
+            return m_assertion.some();
+        }
+        bool AssertionOrBenchmarkResult::isBenchmark() const {
+            return m_benchmark.some();
+        }</span>
+
+<span style = "background-color:#fdd">        AssertionStats const&amp; AssertionOrBenchmarkResult::asAssertion() const {
+            assert(m_assertion.some());</span>
+
+<span style = "background-color:#fdd">            return *m_assertion;
+        }
+        BenchmarkStats&lt;&gt; const&amp; AssertionOrBenchmarkResult::asBenchmark() const {
+            assert(m_benchmark.some());</span>
+
+<span style = "background-color:#fdd">            return *m_benchmark;
+        }</span>
+
+    }
+
+<span style = "background-color:#fdd">    CumulativeReporterBase::~CumulativeReporterBase() = default;</span>
+
+<span style = "background-color:#fdd">    void CumulativeReporterBase::benchmarkEnded(BenchmarkStats&lt;&gt; const&amp; benchmarkStats) {
+        m_sectionStack.back()-&gt;assertionsAndBenchmarks.emplace_back(benchmarkStats);
+    }</span>
+
+    void
+<span style = "background-color:#fdd">    CumulativeReporterBase::sectionStarting( SectionInfo const&amp; sectionInfo ) {</span>
+        // We need a copy, because SectionStats expect to take ownership
+<span style = "background-color:#fdd">        SectionStats incompleteStats( SectionInfo(sectionInfo), Counts(), 0, false );</span>
+        SectionNode* node;
+<span style = "background-color:#fdd">        if ( m_sectionStack.empty() ) {
+            if ( !m_rootSection ) {
+                m_rootSection =</span>
+                    Detail::make_unique&lt;SectionNode&gt;( incompleteStats );
+            }
+<span style = "background-color:#fdd">            node = m_rootSection.get();
+        } else {
+            SectionNode&amp; parentNode = *m_sectionStack.back();
+            auto it = std::find_if( parentNode.childSections.begin(),</span>
+                                    parentNode.childSections.end(),
+                                    BySectionInfo( sectionInfo ) );
+<span style = "background-color:#fdd">            if ( it == parentNode.childSections.end() ) {
+                auto newNode =</span>
+                    Detail::make_unique&lt;SectionNode&gt;( incompleteStats );
+<span style = "background-color:#fdd">                node = newNode.get();
+                parentNode.childSections.push_back( CATCH_MOVE( newNode ) );
+            } else {
+                node = it-&gt;get();</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        m_deepestSection = node;
+        m_sectionStack.push_back( node );
+    }</span>
+
+    void CumulativeReporterBase::assertionEnded(
+<span style = "background-color:#fdd">        AssertionStats const&amp; assertionStats ) {
+        assert( !m_sectionStack.empty() );</span>
+        // AssertionResult holds a pointer to a temporary DecomposedExpression,
+        // which getExpandedExpression() calls to build the expression string.
+        // Our section stack copy of the assertionResult will likely outlive the
+        // temporary, so it must be expanded or discarded now to avoid calling
+        // a destroyed object later.
+<span style = "background-color:#fdd">        if ( m_shouldStoreFailedAssertions &amp;&amp;</span>
+             !assertionStats.assertionResult.isOk() ) {
+<span style = "background-color:#fdd">            static_cast&lt;void&gt;(</span>
+                assertionStats.assertionResult.getExpandedExpression() );
+        }
+<span style = "background-color:#fdd">        if ( m_shouldStoreSuccesfulAssertions &amp;&amp;</span>
+             assertionStats.assertionResult.isOk() ) {
+<span style = "background-color:#fdd">            static_cast&lt;void&gt;(</span>
+                assertionStats.assertionResult.getExpandedExpression() );
+        }
+<span style = "background-color:#fdd">        SectionNode&amp; sectionNode = *m_sectionStack.back();
+        sectionNode.assertionsAndBenchmarks.emplace_back( assertionStats );
+    }</span>
+
+<span style = "background-color:#fdd">    void CumulativeReporterBase::sectionEnded( SectionStats const&amp; sectionStats ) {
+        assert( !m_sectionStack.empty() );
+        SectionNode&amp; node = *m_sectionStack.back();
+        node.stats = sectionStats;
+        m_sectionStack.pop_back();
+    }</span>
+
+    void CumulativeReporterBase::testCaseEnded(
+<span style = "background-color:#fdd">        TestCaseStats const&amp; testCaseStats ) {
+        auto node = Detail::make_unique&lt;TestCaseNode&gt;( testCaseStats );
+        assert( m_sectionStack.size() == 0 );
+        node-&gt;children.push_back( CATCH_MOVE(m_rootSection) );
+        m_testCases.push_back( CATCH_MOVE(node) );</span>
+
+<span style = "background-color:#fdd">        assert( m_deepestSection );
+        m_deepestSection-&gt;stdOut = testCaseStats.stdOut;
+        m_deepestSection-&gt;stdErr = testCaseStats.stdErr;
+    }</span>
+
+
+<span style = "background-color:#fdd">    void CumulativeReporterBase::testRunEnded( TestRunStats const&amp; testRunStats ) {
+        assert(!m_testRun &amp;&amp; "CumulativeReporterBase assumes there can only be one test run");
+        m_testRun = Detail::make_unique&lt;TestRunNode&gt;( testRunStats );
+        m_testRun-&gt;children.swap( m_testCases );
+        testRunEndedCumulative();
+    }</span>
+
+<span style = "background-color:#fdd">    bool CumulativeReporterBase::SectionNode::hasAnyAssertions() const {
+        return std::any_of(</span>
+            assertionsAndBenchmarks.begin(),
+            assertionsAndBenchmarks.end(),
+            []( Detail::AssertionOrBenchmarkResult const&amp; res ) {
+<span style = "background-color:#fdd">                return res.isAssertion();
+            } );
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

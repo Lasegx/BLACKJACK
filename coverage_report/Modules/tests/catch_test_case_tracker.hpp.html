@@ -1,0 +1,270 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_case_tracker.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_TEST_CASE_TRACKER_HPP_INCLUDED
+#define CATCH_TEST_CASE_TRACKER_HPP_INCLUDED
+
+#include &lt;catch2/internal/catch_source_line_info.hpp&gt;
+#include &lt;catch2/internal/catch_unique_ptr.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+
+#include &lt;string&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+namespace TestCaseTracking {
+
+    struct NameAndLocation {
+        std::string name;
+        SourceLineInfo location;
+
+        NameAndLocation( std::string&amp;&amp; _name, SourceLineInfo const&amp; _location );
+<span style = "background-color:#fdd">        friend bool operator==(NameAndLocation const&amp; lhs, NameAndLocation const&amp; rhs) {</span>
+            // This is a very cheap check that should have a very high hit rate.
+            // If we get to SourceLineInfo::operator==, we will redo it, but the
+            // cost of repeating is trivial at that point (we will be paying
+            // multiple strcmp/memcmps at that point).
+<span style = "background-color:#fdd">            if ( lhs.location.line != rhs.location.line ) { return false; }
+            return lhs.name == rhs.name &amp;&amp; lhs.location == rhs.location;
+        }</span>
+        friend bool operator!=(NameAndLocation const&amp; lhs,
+<span style = "background-color:#fdd">                               NameAndLocation const&amp; rhs) {
+            return !( lhs == rhs );
+        }</span>
+    };
+
+    /**
+     * This is a variant of `NameAndLocation` that does not own the name string
+     *
+     * This avoids extra allocations when trying to locate a tracker by its
+     * name and location, as long as we make sure that trackers only keep
+     * around the owning variant.
+     */
+    struct NameAndLocationRef {
+        StringRef name;
+        SourceLineInfo location;
+
+        constexpr NameAndLocationRef( StringRef name_,
+                                      SourceLineInfo location_ ):
+<span style = "background-color:#dfd">            name( name_ ), location( location_ ) {}</span>
+
+        friend bool operator==( NameAndLocation const&amp; lhs,
+<span style = "background-color:#fdd">                                NameAndLocationRef const&amp; rhs ) {</span>
+            // This is a very cheap check that should have a very high hit rate.
+            // If we get to SourceLineInfo::operator==, we will redo it, but the
+            // cost of repeating is trivial at that point (we will be paying
+            // multiple strcmp/memcmps at that point).
+<span style = "background-color:#fdd">            if ( lhs.location.line != rhs.location.line ) { return false; }
+            return StringRef( lhs.name ) == rhs.name &amp;&amp;</span>
+                   lhs.location == rhs.location;
+<span style = "background-color:#fdd">        }</span>
+        friend bool operator==( NameAndLocationRef const&amp; lhs,
+                                NameAndLocation const&amp; rhs ) {
+            return rhs == lhs;
+        }
+    };
+
+    class ITracker;
+
+    using ITrackerPtr = Catch::Detail::unique_ptr&lt;ITracker&gt;;
+
+    class ITracker {
+        NameAndLocation m_nameAndLocation;
+
+        using Children = std::vector&lt;ITrackerPtr&gt;;
+
+    protected:
+        enum CycleState {
+            NotStarted,
+            Executing,
+            ExecutingChildren,
+            NeedsAnotherRun,
+            CompletedSuccessfully,
+            Failed
+        };
+
+        ITracker* m_parent = nullptr;
+        Children m_children;
+<span style = "background-color:#dfd">        CycleState m_runState = NotStarted;</span>
+
+    public:
+        ITracker( NameAndLocation&amp;&amp; nameAndLoc, ITracker* parent ):
+<span style = "background-color:#dfd">            m_nameAndLocation( CATCH_MOVE(nameAndLoc) ),
+            m_parent( parent )
+        {}</span>
+
+
+        // static queries
+<span style = "background-color:#dfd">        NameAndLocation const&amp; nameAndLocation() const {
+            return m_nameAndLocation;
+        }</span>
+<span style = "background-color:#fdd">        ITracker* parent() const {
+            return m_parent;
+        }</span>
+
+        virtual ~ITracker(); // = default
+
+
+        // dynamic queries
+
+        //! Returns true if tracker run to completion (successfully or not)
+        virtual bool isComplete() const = 0;
+        //! Returns true if tracker run to completion successfully
+<span style = "background-color:#dfd">        bool isSuccessfullyCompleted() const {
+            return m_runState == CompletedSuccessfully;
+        }</span>
+        //! Returns true if tracker has started but hasn't been completed
+        bool isOpen() const;
+        //! Returns true iff tracker has started
+        bool hasStarted() const;
+
+        // actions
+        virtual void close() = 0; // Successfully complete
+        virtual void fail() = 0;
+        void markAsNeedingAnotherRun();
+
+        //! Register a nested ITracker
+        void addChild( ITrackerPtr&amp;&amp; child );
+        /**
+         * Returns ptr to specific child if register with this tracker.
+         *
+         * Returns nullptr if not found.
+         */
+        ITracker* findChild( NameAndLocationRef const&amp; nameAndLocation );
+        //! Have any children been added?
+<span style = "background-color:#fdd">        bool hasChildren() const {
+            return !m_children.empty();
+        }</span>
+
+
+        //! Marks tracker as executing a child, doing se recursively up the tree
+        void openChild();
+
+        /**
+         * Returns true if the instance is a section tracker
+         *
+         * Subclasses should override to true if they are, replaces RTTI
+         * for internal debug checks.
+         */
+        virtual bool isSectionTracker() const;
+        /**
+         * Returns true if the instance is a generator tracker
+         *
+         * Subclasses should override to true if they are, replaces RTTI
+         * for internal debug checks.
+         */
+        virtual bool isGeneratorTracker() const;
+    };
+
+    class TrackerContext {
+
+        enum RunState {
+            NotStarted,
+            Executing,
+            CompletedCycle
+        };
+
+        ITrackerPtr m_rootTracker;
+        ITracker* m_currentTracker = nullptr;
+        RunState m_runState = NotStarted;
+
+    public:
+
+        ITracker&amp; startRun();
+
+<span style = "background-color:#dfd">        void startCycle() {
+            m_currentTracker = m_rootTracker.get();
+            m_runState = Executing;
+        }</span>
+        void completeCycle();
+
+        bool completedCycle() const;
+<span style = "background-color:#dfd">        ITracker&amp; currentTracker() { return *m_currentTracker; }</span>
+        void setCurrentTracker( ITracker* tracker );
+    };
+
+    class TrackerBase : public ITracker {
+    protected:
+
+        TrackerContext&amp; m_ctx;
+
+    public:
+        TrackerBase( NameAndLocation&amp;&amp; nameAndLocation, TrackerContext&amp; ctx, ITracker* parent );
+
+        bool isComplete() const override;
+
+        void open();
+
+        void close() override;
+        void fail() override;
+
+    private:
+        void moveToParent();
+        void moveToThis();
+    };
+
+    class SectionTracker : public TrackerBase {
+        std::vector&lt;StringRef&gt; m_filters;
+        // Note that lifetime-wise we piggy back off the name stored in the `ITracker` parent`.
+        // Currently it allocates owns the name, so this is safe. If it is later refactored
+        // to not own the name, the name still has to outlive the `ITracker` parent, so
+        // this should still be safe.
+        StringRef m_trimmed_name;
+    public:
+        SectionTracker( NameAndLocation&amp;&amp; nameAndLocation, TrackerContext&amp; ctx, ITracker* parent );
+
+        bool isSectionTracker() const override;
+
+        bool isComplete() const override;
+
+        static SectionTracker&amp; acquire( TrackerContext&amp; ctx, NameAndLocationRef const&amp; nameAndLocation );
+
+        void tryOpen();
+
+        void addInitialFilters( std::vector&lt;std::string&gt; const&amp; filters );
+        void addNextFilters( std::vector&lt;StringRef&gt; const&amp; filters );
+        //! Returns filters active in this tracker
+<span style = "background-color:#fdd">        std::vector&lt;StringRef&gt; const&amp; getFilters() const { return m_filters; }</span>
+        //! Returns whitespace-trimmed name of the tracked section
+        StringRef trimmedName() const;
+    };
+
+} // namespace TestCaseTracking
+
+using TestCaseTracking::ITracker;
+using TestCaseTracking::TrackerContext;
+using TestCaseTracking::SectionTracker;
+
+} // namespace Catch
+
+#endif // CATCH_TEST_CASE_TRACKER_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

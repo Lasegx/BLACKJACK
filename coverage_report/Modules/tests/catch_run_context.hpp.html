@@ -1,0 +1,187 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_run_context.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_RUN_CONTEXT_HPP_INCLUDED
+#define CATCH_RUN_CONTEXT_HPP_INCLUDED
+
+#include &lt;catch2/interfaces/catch_interfaces_capture.hpp&gt;
+#include &lt;catch2/internal/catch_test_registry.hpp&gt;
+#include &lt;catch2/internal/catch_test_run_info.hpp&gt;
+#include &lt;catch2/internal/catch_fatal_condition_handler.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/catch_message.hpp&gt;
+#include &lt;catch2/catch_totals.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_tracker.hpp&gt;
+#include &lt;catch2/catch_assertion_info.hpp&gt;
+#include &lt;catch2/catch_assertion_result.hpp&gt;
+#include &lt;catch2/internal/catch_optional.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;string&gt;
+
+namespace Catch {
+
+    class IGeneratorTracker;
+    class IConfig;
+    class IEventListener;
+    using IEventListenerPtr = Detail::unique_ptr&lt;IEventListener&gt;;
+
+    ///////////////////////////////////////////////////////////////////////////
+
+    class RunContext final : public IResultCapture {
+
+    public:
+        RunContext( RunContext const&amp; ) = delete;
+        RunContext&amp; operator =( RunContext const&amp; ) = delete;
+
+        explicit RunContext( IConfig const* _config, IEventListenerPtr&amp;&amp; reporter );
+
+        ~RunContext() override;
+
+        Totals runTest(TestCaseHandle const&amp; testCase);
+
+    public: // IResultCapture
+
+        // Assertion handlers
+        void handleExpr
+                (   AssertionInfo const&amp; info,
+                    ITransientExpression const&amp; expr,
+                    AssertionReaction&amp; reaction ) override;
+        void handleMessage
+                (   AssertionInfo const&amp; info,
+                    ResultWas::OfType resultType,
+                    StringRef message,
+                    AssertionReaction&amp; reaction ) override;
+        void handleUnexpectedExceptionNotThrown
+                (   AssertionInfo const&amp; info,
+                    AssertionReaction&amp; reaction ) override;
+        void handleUnexpectedInflightException
+                (   AssertionInfo const&amp; info,
+                    std::string&amp;&amp; message,
+                    AssertionReaction&amp; reaction ) override;
+        void handleIncomplete
+                (   AssertionInfo const&amp; info ) override;
+        void handleNonExpr
+                (   AssertionInfo const &amp;info,
+                    ResultWas::OfType resultType,
+                    AssertionReaction &amp;reaction ) override;
+
+        void notifyAssertionStarted( AssertionInfo const&amp; info ) override;
+        bool sectionStarted( StringRef sectionName,
+                             SourceLineInfo const&amp; sectionLineInfo,
+                             Counts&amp; assertions ) override;
+
+        void sectionEnded( SectionEndInfo&amp;&amp; endInfo ) override;
+        void sectionEndedEarly( SectionEndInfo&amp;&amp; endInfo ) override;
+
+        IGeneratorTracker*
+        acquireGeneratorTracker( StringRef generatorName,
+                                 SourceLineInfo const&amp; lineInfo ) override;
+        IGeneratorTracker* createGeneratorTracker(
+            StringRef generatorName,
+            SourceLineInfo lineInfo,
+            Generators::GeneratorBasePtr&amp;&amp; generator ) override;
+
+
+        void benchmarkPreparing( StringRef name ) override;
+        void benchmarkStarting( BenchmarkInfo const&amp; info ) override;
+        void benchmarkEnded( BenchmarkStats&lt;&gt; const&amp; stats ) override;
+        void benchmarkFailed( StringRef error ) override;
+
+        void pushScopedMessage( MessageInfo const&amp; message ) override;
+        void popScopedMessage( MessageInfo const&amp; message ) override;
+
+        void emplaceUnscopedMessage( MessageBuilder&amp;&amp; builder ) override;
+
+        std::string getCurrentTestName() const override;
+
+        const AssertionResult* getLastResult() const override;
+
+        void exceptionEarlyReported() override;
+
+        void handleFatalErrorCondition( StringRef message ) override;
+
+        bool lastAssertionPassed() override;
+
+        void assertionPassed() override;
+
+    public:
+        // !TBD We need to do this another way!
+        bool aborting() const;
+
+    private:
+
+        void runCurrentTest( std::string&amp; redirectedCout, std::string&amp; redirectedCerr );
+        void invokeActiveTestCase();
+
+        void resetAssertionInfo();
+        bool testForMissingAssertions( Counts&amp; assertions );
+
+        void assertionEnded( AssertionResult&amp;&amp; result );
+        void reportExpr
+                (   AssertionInfo const &amp;info,
+                    ResultWas::OfType resultType,
+                    ITransientExpression const *expr,
+                    bool negated );
+
+        void populateReaction( AssertionReaction&amp; reaction );
+
+    private:
+
+        void handleUnfinishedSections();
+
+        TestRunInfo m_runInfo;
+<span style = "background-color:#dfd">        TestCaseHandle const* m_activeTestCase = nullptr;
+        ITracker* m_testCaseTracker = nullptr;</span>
+        Optional&lt;AssertionResult&gt; m_lastResult;
+
+        IConfig const* m_config;
+        Totals m_totals;
+        IEventListenerPtr m_reporter;
+        std::vector&lt;MessageInfo&gt; m_messages;
+        std::vector&lt;ScopedMessage&gt; m_messageScopes; /* Keeps owners of so-called unscoped messages. */
+        AssertionInfo m_lastAssertionInfo;
+        std::vector&lt;SectionEndInfo&gt; m_unfinishedSections;
+        std::vector&lt;ITracker*&gt; m_activeSections;
+        TrackerContext m_trackerContext;
+        FatalConditionHandler m_fatalConditionhandler;
+<span style = "background-color:#dfd">        bool m_lastAssertionPassed = false;
+        bool m_shouldReportUnexpected = true;</span>
+        bool m_includeSuccessfulResults;
+    };
+
+    void seedRng(IConfig const&amp; config);
+    unsigned int rngSeed();
+} // end namespace Catch
+
+#endif // CATCH_RUN_CONTEXT_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,117 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_registry.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/interfaces/catch_interfaces_reporter_factory.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_automake.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_compact.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_console.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_json.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_junit.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_registrars.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_sonarqube.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_tap.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_teamcity.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_xml.hpp&gt;
+
+namespace Catch {
+    struct ReporterRegistry::ReporterRegistryImpl {
+        std::vector&lt;Detail::unique_ptr&lt;EventListenerFactory&gt;&gt; listeners;
+        std::map&lt;std::string, IReporterFactoryPtr, Detail::CaseInsensitiveLess&gt;
+            factories;
+    };
+
+    ReporterRegistry::ReporterRegistry():
+<span style = "background-color:#dfd">        m_impl( Detail::make_unique&lt;ReporterRegistryImpl&gt;() ) {</span>
+        // Because it is impossible to move out of initializer list,
+        // we have to add the elements manually
+<span style = "background-color:#dfd">        m_impl-&gt;factories["Automake"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;AutomakeReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["compact"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;CompactReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["console"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;ConsoleReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["JUnit"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;JunitReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["SonarQube"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;SonarQubeReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["TAP"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;TAPReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["TeamCity"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;TeamCityReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["XML"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;XmlReporter&gt;&gt;();
+<span style = "background-color:#dfd">        m_impl-&gt;factories["JSON"] =</span>
+            Detail::make_unique&lt;ReporterFactory&lt;JsonReporter&gt;&gt;();
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    ReporterRegistry::~ReporterRegistry() = default;</span>
+
+    IEventListenerPtr
+    ReporterRegistry::create( std::string const&amp; name,
+<span style = "background-color:#dfd">                              ReporterConfig&amp;&amp; config ) const {
+        auto it = m_impl-&gt;factories.find( name );
+        if ( it == m_impl-&gt;factories.end() ) return nullptr;
+        return it-&gt;second-&gt;create( CATCH_MOVE( config ) );
+    }</span>
+
+    void ReporterRegistry::registerReporter( std::string const&amp; name,
+<span style = "background-color:#fdd">                                             IReporterFactoryPtr factory ) {
+        CATCH_ENFORCE( name.find( "::" ) == name.npos,</span>
+                       "'::' is not allowed in reporter name: '" + name +
+                           '\'' );
+<span style = "background-color:#fdd">        auto ret = m_impl-&gt;factories.emplace( name, CATCH_MOVE( factory ) );
+        CATCH_ENFORCE( ret.second,</span>
+                       "reporter using '" + name +
+                           "' as name was already registered" );
+<span style = "background-color:#fdd">    }</span>
+    void ReporterRegistry::registerListener(
+<span style = "background-color:#fdd">        Detail::unique_ptr&lt;EventListenerFactory&gt; factory ) {
+        m_impl-&gt;listeners.push_back( CATCH_MOVE( factory ) );
+    }</span>
+
+    std::map&lt;std::string,
+             IReporterFactoryPtr,
+             Detail::CaseInsensitiveLess&gt; const&amp;
+<span style = "background-color:#fdd">    ReporterRegistry::getFactories() const {
+        return m_impl-&gt;factories;
+    }</span>
+
+    std::vector&lt;Detail::unique_ptr&lt;EventListenerFactory&gt;&gt; const&amp;
+<span style = "background-color:#dfd">    ReporterRegistry::getListeners() const {
+        return m_impl-&gt;listeners;
+    }</span>
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

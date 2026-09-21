@@ -1,0 +1,254 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_tap.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_tap.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;ostream&gt;
+
+namespace Catch {
+
+    namespace {
+        // Yes, this has to be outside the class and namespaced by naming.
+        // Making older compiler happy is hard.
+        static constexpr StringRef tapFailedString = "not ok"_sr;
+        static constexpr StringRef tapPassedString = "ok"_sr;
+        static constexpr Colour::Code tapDimColour = Colour::FileName;
+
+        class TapAssertionPrinter {
+        public:
+            TapAssertionPrinter&amp; operator= (TapAssertionPrinter const&amp;) = delete;
+            TapAssertionPrinter(TapAssertionPrinter const&amp;) = delete;
+            TapAssertionPrinter(std::ostream&amp; _stream, AssertionStats const&amp; _stats, std::size_t _counter, ColourImpl* colour_)
+<span style = "background-color:#fdd">                : stream(_stream)
+                , result(_stats.assertionResult)
+                , messages(_stats.infoMessages)
+                , itMessage(_stats.infoMessages.begin())
+                , printInfoMessages(true)
+                , counter(_counter)
+                , colourImpl( colour_ ) {}</span>
+
+<span style = "background-color:#fdd">            void print() {
+                itMessage = messages.begin();</span>
+
+<span style = "background-color:#fdd">                switch (result.getResultType()) {</span>
+                case ResultWas::Ok:
+<span style = "background-color:#fdd">                    printResultType(tapPassedString);
+                    printOriginalExpression();
+                    printReconstructedExpression();
+                    if (!result.hasExpression())
+                        printRemainingMessages(Colour::None);</span>
+                    else
+<span style = "background-color:#fdd">                        printRemainingMessages();
+                    break;</span>
+                case ResultWas::ExpressionFailed:
+<span style = "background-color:#fdd">                    if (result.isOk()) {
+                        printResultType(tapPassedString);
+                    } else {
+                        printResultType(tapFailedString);</span>
+                    }
+<span style = "background-color:#fdd">                    printOriginalExpression();
+                    printReconstructedExpression();
+                    if (result.isOk()) {
+                        printIssue(" # TODO");</span>
+                    }
+<span style = "background-color:#fdd">                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::ThrewException:
+<span style = "background-color:#fdd">                    printResultType(tapFailedString);
+                    printIssue("unexpected exception with message:"_sr);
+                    printMessage();
+                    printExpressionWas();
+                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">                    printResultType(tapFailedString);
+                    printIssue("fatal error condition with message:"_sr);
+                    printMessage();
+                    printExpressionWas();
+                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">                    printResultType(tapFailedString);
+                    printIssue("expected exception, got none"_sr);
+                    printExpressionWas();
+                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::Info:
+<span style = "background-color:#fdd">                    printResultType("info"_sr);
+                    printMessage();
+                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::Warning:
+<span style = "background-color:#fdd">                    printResultType("warning"_sr);
+                    printMessage();
+                    printRemainingMessages();
+                    break;</span>
+                case ResultWas::ExplicitFailure:
+<span style = "background-color:#fdd">                    printResultType(tapFailedString);
+                    printIssue("explicitly"_sr);
+                    printRemainingMessages(Colour::None);
+                    break;</span>
+                case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">                    printResultType(tapPassedString);
+                    printIssue(" # SKIP"_sr);
+                    printMessage();
+                    printRemainingMessages();
+                    break;</span>
+                    // These cases are here to prevent compiler warnings
+                case ResultWas::Unknown:
+                case ResultWas::FailureBit:
+                case ResultWas::Exception:
+<span style = "background-color:#fdd">                    printResultType("** internal error **"_sr);</span>
+                    break;
+                }
+<span style = "background-color:#fdd">            }</span>
+
+        private:
+<span style = "background-color:#fdd">            void printResultType(StringRef passOrFail) const {
+                if (!passOrFail.empty()) {
+                    stream &lt;&lt; passOrFail &lt;&lt; ' ' &lt;&lt; counter &lt;&lt; " -";</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+
+<span style = "background-color:#fdd">            void printIssue(StringRef issue) const {
+                stream &lt;&lt; ' ' &lt;&lt; issue;
+            }</span>
+
+<span style = "background-color:#fdd">            void printExpressionWas() {
+                if (result.hasExpression()) {
+                    stream &lt;&lt; ';';
+                    stream &lt;&lt; colourImpl-&gt;guardColour( tapDimColour )</span>
+                           &lt;&lt; " expression was:";
+<span style = "background-color:#fdd">                    printOriginalExpression();</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+
+<span style = "background-color:#fdd">            void printOriginalExpression() const {
+                if (result.hasExpression()) {
+                    stream &lt;&lt; ' ' &lt;&lt; result.getExpression();</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+
+<span style = "background-color:#fdd">            void printReconstructedExpression() const {
+                if (result.hasExpandedExpression()) {
+                    stream &lt;&lt; colourImpl-&gt;guardColour( tapDimColour ) &lt;&lt; " for: ";</span>
+
+<span style = "background-color:#fdd">                    std::string expr = result.getExpandedExpression();
+                    std::replace(expr.begin(), expr.end(), '\n', ' ');
+                    stream &lt;&lt; expr;
+                }
+            }</span>
+
+<span style = "background-color:#fdd">            void printMessage() {
+                if (itMessage != messages.end()) {
+                    stream &lt;&lt; " '" &lt;&lt; itMessage-&gt;message &lt;&lt; '\'';
+                    ++itMessage;</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+
+<span style = "background-color:#fdd">            void printRemainingMessages(Colour::Code colour = tapDimColour) {
+                if (itMessage == messages.end()) {
+                    return;</span>
+                }
+
+                // using messages.end() directly (or auto) yields compilation error:
+<span style = "background-color:#fdd">                std::vector&lt;MessageInfo&gt;::const_iterator itEnd = messages.end();
+                const std::size_t N = static_cast&lt;std::size_t&gt;(itEnd - itMessage);</span>
+
+<span style = "background-color:#fdd">                stream &lt;&lt; colourImpl-&gt;guardColour( colour ) &lt;&lt; " with "</span>
+                       &lt;&lt; pluralise( N, "message"_sr ) &lt;&lt; ':';
+
+<span style = "background-color:#fdd">                for (; itMessage != itEnd; ) {</span>
+                    // If this assertion is a warning ignore any INFO messages
+<span style = "background-color:#fdd">                    if (printInfoMessages || itMessage-&gt;type != ResultWas::Info) {
+                        stream &lt;&lt; " '" &lt;&lt; itMessage-&gt;message &lt;&lt; '\'';
+                        if (++itMessage != itEnd) {
+                            stream &lt;&lt; colourImpl-&gt;guardColour(tapDimColour) &lt;&lt; " and";</span>
+                        }
+                    }
+<span style = "background-color:#fdd">                }
+            }</span>
+
+        private:
+            std::ostream&amp; stream;
+            AssertionResult const&amp; result;
+            std::vector&lt;MessageInfo&gt; const&amp; messages;
+            std::vector&lt;MessageInfo&gt;::const_iterator itMessage;
+            bool printInfoMessages;
+            std::size_t counter;
+            ColourImpl* colourImpl;
+        };
+
+    } // End anonymous namespace
+
+<span style = "background-color:#fdd">    void TAPReporter::testRunStarting( TestRunInfo const&amp; ) {
+        if ( m_config-&gt;testSpec().hasFilters() ) {
+            m_stream &lt;&lt; "# filters: " &lt;&lt; m_config-&gt;testSpec() &lt;&lt; '\n';</span>
+        }
+<span style = "background-color:#fdd">        m_stream &lt;&lt; "# rng-seed: " &lt;&lt; m_config-&gt;rngSeed() &lt;&lt; '\n';
+    }</span>
+
+<span style = "background-color:#fdd">    void TAPReporter::noMatchingTestCases( StringRef unmatchedSpec ) {
+        m_stream &lt;&lt; "# No test cases matched '" &lt;&lt; unmatchedSpec &lt;&lt; "'\n";
+    }</span>
+
+<span style = "background-color:#fdd">    void TAPReporter::assertionEnded(AssertionStats const&amp; _assertionStats) {
+        ++counter;</span>
+
+<span style = "background-color:#fdd">        m_stream &lt;&lt; "# " &lt;&lt; currentTestCaseInfo-&gt;name &lt;&lt; '\n';
+        TapAssertionPrinter printer(m_stream, _assertionStats, counter, m_colour.get());
+        printer.print();</span>
+
+<span style = "background-color:#fdd">        m_stream &lt;&lt; '\n' &lt;&lt; std::flush;
+    }</span>
+
+<span style = "background-color:#fdd">    void TAPReporter::testRunEnded(TestRunStats const&amp; _testRunStats) {
+        m_stream &lt;&lt; "1.." &lt;&lt; _testRunStats.totals.assertions.total();
+        if (_testRunStats.totals.testCases.total() == 0) {
+            m_stream &lt;&lt; " # Skipped: No tests ran.";</span>
+        }
+<span style = "background-color:#fdd">        m_stream &lt;&lt; "\n\n" &lt;&lt; std::flush;
+        StreamingReporterBase::testRunEnded(_testRunStats);
+    }</span>
+
+
+
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

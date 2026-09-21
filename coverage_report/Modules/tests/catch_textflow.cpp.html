@@ -1,0 +1,294 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_textflow.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;cstring&gt;
+#include &lt;ostream&gt;
+
+namespace {
+<span style = "background-color:#fdd">    bool isWhitespace( char c ) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    }</span>
+
+<span style = "background-color:#fdd">    bool isBreakableBefore( char c ) {</span>
+        static const char chars[] = "[({&lt;|";
+<span style = "background-color:#fdd">        return std::memchr( chars, c, sizeof( chars ) - 1 ) != nullptr;
+    }</span>
+
+<span style = "background-color:#fdd">    bool isBreakableAfter( char c ) {</span>
+        static const char chars[] = "])}&gt;.,:;*+-=&amp;/\\";
+<span style = "background-color:#fdd">        return std::memchr( chars, c, sizeof( chars ) - 1 ) != nullptr;
+    }</span>
+
+<span style = "background-color:#fdd">    bool isBoundary( std::string const&amp; line, size_t at ) {
+        assert( at &gt; 0 );
+        assert( at &lt;= line.size() );</span>
+
+<span style = "background-color:#fdd">        return at == line.size() ||</span>
+               ( isWhitespace( line[at] ) &amp;&amp; !isWhitespace( line[at - 1] ) ) ||
+               isBreakableBefore( line[at] ) ||
+               isBreakableAfter( line[at - 1] );
+<span style = "background-color:#fdd">    }</span>
+
+} // namespace
+
+namespace Catch {
+    namespace TextFlow {
+
+<span style = "background-color:#fdd">        void Column::const_iterator::calcLength() {
+            m_addHyphen = false;
+            m_parsedTo = m_lineStart;</span>
+
+<span style = "background-color:#fdd">            std::string const&amp; current_line = m_column.m_string;
+            if ( current_line[m_lineStart] == '\n' ) {
+                ++m_parsedTo;</span>
+            }
+
+<span style = "background-color:#fdd">            const auto maxLineLength = m_column.m_width - indentSize();
+            const auto maxParseTo = std::min(current_line.size(), m_lineStart + maxLineLength);
+            while ( m_parsedTo &lt; maxParseTo &amp;&amp;</span>
+                    current_line[m_parsedTo] != '\n' ) {
+<span style = "background-color:#fdd">                ++m_parsedTo;
+            }</span>
+
+            // If we encountered a newline before the column is filled,
+            // then we linebreak at the newline and consider this line
+            // finished.
+<span style = "background-color:#fdd">            if ( m_parsedTo &lt; m_lineStart + maxLineLength ) {
+                m_lineLength = m_parsedTo - m_lineStart;
+            } else {</span>
+                // Look for a natural linebreak boundary in the column
+                // (We look from the end, so that the first found boundary is
+                // the right one)
+<span style = "background-color:#fdd">                size_t newLineLength = maxLineLength;
+                while ( newLineLength &gt; 0 &amp;&amp; !isBoundary( current_line, m_lineStart + newLineLength ) ) {
+                    --newLineLength;
+                }
+                while ( newLineLength &gt; 0 &amp;&amp;</span>
+                        isWhitespace( current_line[m_lineStart + newLineLength - 1] ) ) {
+<span style = "background-color:#fdd">                    --newLineLength;
+                }</span>
+
+                // If we found one, then that is where we linebreak
+<span style = "background-color:#fdd">                if ( newLineLength &gt; 0 ) {
+                    m_lineLength = newLineLength;
+                } else {</span>
+                    // Otherwise we have to split text with a hyphen
+<span style = "background-color:#fdd">                    m_addHyphen = true;
+                    m_lineLength = maxLineLength - 1;</span>
+                }
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        size_t Column::const_iterator::indentSize() const {
+            auto initial =</span>
+                m_lineStart == 0 ? m_column.m_initialIndent : std::string::npos;
+<span style = "background-color:#fdd">            return initial == std::string::npos ? m_column.m_indent : initial;
+        }</span>
+
+        std::string
+        Column::const_iterator::addIndentAndSuffix( size_t position,
+<span style = "background-color:#fdd">                                              size_t length ) const {
+            std::string ret;
+            const auto desired_indent = indentSize();
+            ret.reserve( desired_indent + length + m_addHyphen );
+            ret.append( desired_indent, ' ' );
+            ret.append( m_column.m_string, position, length );
+            if ( m_addHyphen ) {
+                ret.push_back( '-' );</span>
+            }
+
+<span style = "background-color:#fdd">            return ret;
+        }</span>
+
+<span style = "background-color:#fdd">        Column::const_iterator::const_iterator( Column const&amp; column ): m_column( column ) {
+            assert( m_column.m_width &gt; m_column.m_indent );
+            assert( m_column.m_initialIndent == std::string::npos ||</span>
+                    m_column.m_width &gt; m_column.m_initialIndent );
+<span style = "background-color:#fdd">            calcLength();
+            if ( m_lineLength == 0 ) {
+                m_lineStart = m_column.m_string.size();</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        std::string Column::const_iterator::operator*() const {
+            assert( m_lineStart &lt;= m_parsedTo );
+            return addIndentAndSuffix( m_lineStart, m_lineLength );
+        }</span>
+
+<span style = "background-color:#fdd">        Column::const_iterator&amp; Column::const_iterator::operator++() {
+            m_lineStart += m_lineLength;
+            std::string const&amp; current_line = m_column.m_string;
+            if ( m_lineStart &lt; current_line.size() &amp;&amp; current_line[m_lineStart] == '\n' ) {
+                m_lineStart += 1;
+            } else {
+                while ( m_lineStart &lt; current_line.size() &amp;&amp;</span>
+                        isWhitespace( current_line[m_lineStart] ) ) {
+<span style = "background-color:#fdd">                    ++m_lineStart;
+                }</span>
+            }
+
+<span style = "background-color:#fdd">            if ( m_lineStart != current_line.size() ) {
+                calcLength();</span>
+            }
+<span style = "background-color:#fdd">            return *this;
+        }</span>
+
+<span style = "background-color:#fdd">        Column::const_iterator Column::const_iterator::operator++( int ) {
+            const_iterator prev( *this );
+            operator++();
+            return prev;
+        }</span>
+
+<span style = "background-color:#fdd">        std::ostream&amp; operator&lt;&lt;( std::ostream&amp; os, Column const&amp; col ) {
+            bool first = true;
+            for ( auto line : col ) {
+                if ( first ) {
+                    first = false;
+                } else {
+                    os &lt;&lt; '\n';</span>
+                }
+<span style = "background-color:#fdd">                os &lt;&lt; line;
+            }
+            return os;
+        }</span>
+
+<span style = "background-color:#fdd">        Column Spacer( size_t spaceWidth ) {
+            Column ret{ "" };
+            ret.width( spaceWidth );
+            return ret;
+        }</span>
+
+        Columns::iterator::iterator( Columns const&amp; columns, EndTag ):
+<span style = "background-color:#fdd">            m_columns( columns.m_columns ), m_activeIterators( 0 ) {</span>
+
+<span style = "background-color:#fdd">            m_iterators.reserve( m_columns.size() );
+            for ( auto const&amp; col : m_columns ) {
+                m_iterators.push_back( col.end() );
+            }
+        }</span>
+
+        Columns::iterator::iterator( Columns const&amp; columns ):
+<span style = "background-color:#fdd">            m_columns( columns.m_columns ),
+            m_activeIterators( m_columns.size() ) {</span>
+
+<span style = "background-color:#fdd">            m_iterators.reserve( m_columns.size() );
+            for ( auto const&amp; col : m_columns ) {
+                m_iterators.push_back( col.begin() );
+            }
+        }</span>
+
+<span style = "background-color:#fdd">        std::string Columns::iterator::operator*() const {
+            std::string row, padding;</span>
+
+<span style = "background-color:#fdd">            for ( size_t i = 0; i &lt; m_columns.size(); ++i ) {
+                const auto width = m_columns[i].width();
+                if ( m_iterators[i] != m_columns[i].end() ) {
+                    std::string col = *m_iterators[i];
+                    row += padding;
+                    row += col;</span>
+
+<span style = "background-color:#fdd">                    padding.clear();
+                    if ( col.size() &lt; width ) {
+                        padding.append( width - col.size(), ' ' );</span>
+                    }
+<span style = "background-color:#fdd">                } else {
+                    padding.append( width, ' ' );</span>
+                }
+<span style = "background-color:#fdd">            }
+            return row;
+        }</span>
+
+<span style = "background-color:#fdd">        Columns::iterator&amp; Columns::iterator::operator++() {
+            for ( size_t i = 0; i &lt; m_columns.size(); ++i ) {
+                if ( m_iterators[i] != m_columns[i].end() ) {
+                    ++m_iterators[i];</span>
+                }
+<span style = "background-color:#fdd">            }
+            return *this;
+        }</span>
+
+<span style = "background-color:#fdd">        Columns::iterator Columns::iterator::operator++( int ) {
+            iterator prev( *this );
+            operator++();
+            return prev;
+        }</span>
+
+<span style = "background-color:#fdd">        std::ostream&amp; operator&lt;&lt;( std::ostream&amp; os, Columns const&amp; cols ) {
+            bool first = true;
+            for ( auto line : cols ) {
+                if ( first ) {
+                    first = false;
+                } else {
+                    os &lt;&lt; '\n';</span>
+                }
+<span style = "background-color:#fdd">                os &lt;&lt; line;
+            }
+            return os;
+        }</span>
+
+<span style = "background-color:#fdd">        Columns operator+(Column const&amp; lhs, Column const&amp; rhs) {
+            Columns cols;
+            cols += lhs;
+            cols += rhs;
+            return cols;
+        }
+        Columns operator+(Column&amp;&amp; lhs, Column&amp;&amp; rhs) {
+            Columns cols;
+            cols += CATCH_MOVE( lhs );
+            cols += CATCH_MOVE( rhs );
+            return cols;
+        }</span>
+
+<span style = "background-color:#fdd">        Columns&amp; operator+=(Columns&amp; lhs, Column const&amp; rhs) {
+            lhs.m_columns.push_back( rhs );
+            return lhs;
+        }
+        Columns&amp; operator+=(Columns&amp; lhs, Column&amp;&amp; rhs) {
+            lhs.m_columns.push_back( CATCH_MOVE(rhs) );
+            return lhs;
+        }
+        Columns operator+( Columns const&amp; lhs, Column const&amp; rhs ) {
+            auto combined( lhs );
+            combined += rhs;
+            return combined;
+        }
+        Columns operator+( Columns&amp;&amp; lhs, Column&amp;&amp; rhs ) {
+            lhs += CATCH_MOVE( rhs );
+            return CATCH_MOVE( lhs );
+        }</span>
+
+    } // namespace TextFlow
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

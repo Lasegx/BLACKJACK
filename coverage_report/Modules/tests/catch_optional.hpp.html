@@ -1,0 +1,143 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_optional.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_OPTIONAL_HPP_INCLUDED
+#define CATCH_OPTIONAL_HPP_INCLUDED
+
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;cassert&gt;
+
+namespace Catch {
+
+    // An optional type
+    template&lt;typename T&gt;
+    class Optional {
+    public:
+<span style = "background-color:#dfd">        Optional(): nullableValue( nullptr ) {}
+        ~Optional() { reset(); }</span>
+
+        Optional( T const&amp; _value ):
+<span style = "background-color:#fdd">            nullableValue( new ( storage ) T( _value ) ) {}</span>
+        Optional( T&amp;&amp; _value ):
+<span style = "background-color:#fdd">            nullableValue( new ( storage ) T( CATCH_MOVE( _value ) ) ) {}</span>
+
+        Optional&amp; operator=( T const&amp; _value ) {
+            reset();
+            nullableValue = new ( storage ) T( _value );
+            return *this;
+        }
+<span style = "background-color:#dfd">        Optional&amp; operator=( T&amp;&amp; _value ) {
+            reset();
+            nullableValue = new ( storage ) T( CATCH_MOVE( _value ) );
+            return *this;
+        }</span>
+
+        Optional( Optional const&amp; _other ):
+<span style = "background-color:#fdd">            nullableValue( _other ? new ( storage ) T( *_other ) : nullptr ) {}</span>
+        Optional( Optional&amp;&amp; _other ):
+<span style = "background-color:#dfd">            nullableValue( _other ? new ( storage ) T( CATCH_MOVE( *_other ) )
+                                  : nullptr ) {}</span>
+
+<span style = "background-color:#fdd">        Optional&amp; operator=( Optional const&amp; _other ) {
+            if ( &amp;_other != this ) {
+                reset();
+                if ( _other ) { nullableValue = new ( storage ) T( *_other ); }</span>
+            }
+<span style = "background-color:#fdd">            return *this;
+        }
+        Optional&amp; operator=( Optional&amp;&amp; _other ) {
+            if ( &amp;_other != this ) {
+                reset();
+                if ( _other ) {
+                    nullableValue = new ( storage ) T( CATCH_MOVE( *_other ) );</span>
+                }
+            }
+<span style = "background-color:#fdd">            return *this;
+        }</span>
+
+<span style = "background-color:#dfd">        void reset() {
+            if ( nullableValue ) { nullableValue-&gt;~T(); }
+            nullableValue = nullptr;
+        }</span>
+
+<span style = "background-color:#fdd">        T&amp; operator*() {
+            assert(nullableValue);
+            return *nullableValue;
+        }
+        T const&amp; operator*() const {
+            assert(nullableValue);
+            return *nullableValue;
+        }</span>
+        T* operator-&gt;() {
+            assert(nullableValue);
+            return nullableValue;
+        }
+<span style = "background-color:#fdd">        const T* operator-&gt;() const {
+            assert(nullableValue);
+            return nullableValue;
+        }</span>
+
+<span style = "background-color:#dfd">        T valueOr( T const&amp; defaultValue ) const {
+            return nullableValue ? *nullableValue : defaultValue;
+        }</span>
+
+<span style = "background-color:#dfd">        bool some() const { return nullableValue != nullptr; }
+        bool none() const { return nullableValue == nullptr; }</span>
+
+<span style = "background-color:#fdd">        bool operator !() const { return nullableValue == nullptr; }</span>
+<span style = "background-color:#dfd">        explicit operator bool() const {
+            return some();
+        }</span>
+
+<span style = "background-color:#fdd">        friend bool operator==(Optional const&amp; a, Optional const&amp; b) {
+            if (a.none() &amp;&amp; b.none()) {
+                return true;
+            } else if (a.some() &amp;&amp; b.some()) {
+                return *a == *b;
+            } else {
+                return false;</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+        friend bool operator!=(Optional const&amp; a, Optional const&amp; b) {
+            return !( a == b );
+        }
+
+    private:
+        T* nullableValue;
+        alignas(alignof(T)) char storage[sizeof(T)];
+    };
+
+} // end namespace Catch
+
+#endif // CATCH_OPTIONAL_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,129 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_string_manip.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+
+#include &lt;ostream&gt;
+#include &lt;cstring&gt;
+#include &lt;cctype&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+
+<span style = "background-color:#fdd">    bool startsWith( std::string const&amp; s, std::string const&amp; prefix ) {
+        return s.size() &gt;= prefix.size() &amp;&amp; std::equal(prefix.begin(), prefix.end(), s.begin());
+    }</span>
+<span style = "background-color:#dfd">    bool startsWith( StringRef s, char prefix ) {
+        return !s.empty() &amp;&amp; s[0] == prefix;
+    }</span>
+<span style = "background-color:#fdd">    bool endsWith( std::string const&amp; s, std::string const&amp; suffix ) {
+        return s.size() &gt;= suffix.size() &amp;&amp; std::equal(suffix.rbegin(), suffix.rend(), s.rbegin());
+    }
+    bool endsWith( std::string const&amp; s, char suffix ) {
+        return !s.empty() &amp;&amp; s[s.size()-1] == suffix;
+    }
+    bool contains( std::string const&amp; s, std::string const&amp; infix ) {
+        return s.find( infix ) != std::string::npos;
+    }
+    void toLowerInPlace( std::string&amp; s ) {
+        for ( char&amp; c : s ) {
+            c = toLower( c );
+        }
+    }
+    std::string toLower( std::string const&amp; s ) {
+        std::string lc = s;
+        toLowerInPlace( lc );
+        return lc;
+    }</span>
+<span style = "background-color:#dfd">    char toLower(char c) {
+        return static_cast&lt;char&gt;(std::tolower(static_cast&lt;unsigned char&gt;(c)));
+    }</span>
+
+<span style = "background-color:#fdd">    std::string trim( std::string const&amp; str ) {</span>
+        static char const* whitespaceChars = "\n\r\t ";
+<span style = "background-color:#fdd">        std::string::size_type start = str.find_first_not_of( whitespaceChars );
+        std::string::size_type end = str.find_last_not_of( whitespaceChars );</span>
+
+<span style = "background-color:#fdd">        return start != std::string::npos ? str.substr( start, 1+end-start ) : std::string();
+    }</span>
+
+<span style = "background-color:#dfd">    StringRef trim(StringRef ref) {
+        const auto is_ws = [](char c) {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        };
+        size_t real_begin = 0;
+        while (real_begin &lt; ref.size() &amp;&amp; is_ws(ref[real_begin])) { ++real_begin; }
+        size_t real_end = ref.size();
+        while (real_end &gt; real_begin &amp;&amp; is_ws(ref[real_end - 1])) { --real_end; }</span>
+
+<span style = "background-color:#dfd">        return ref.substr(real_begin, real_end - real_begin);
+    }</span>
+
+<span style = "background-color:#fdd">    bool replaceInPlace( std::string&amp; str, std::string const&amp; replaceThis, std::string const&amp; withThis ) {
+        bool replaced = false;
+        std::size_t i = str.find( replaceThis );
+        while( i != std::string::npos ) {
+            replaced = true;
+            str = str.substr( 0, i ) + withThis + str.substr( i+replaceThis.size() );
+            if( i &lt; str.size()-withThis.size() )
+                i = str.find( replaceThis, i+withThis.size() );</span>
+            else
+<span style = "background-color:#fdd">                i = std::string::npos;
+        }
+        return replaced;
+    }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;StringRef&gt; splitStringRef( StringRef str, char delimiter ) {
+        std::vector&lt;StringRef&gt; subStrings;
+        std::size_t start = 0;
+        for(std::size_t pos = 0; pos &lt; str.size(); ++pos ) {
+            if( str[pos] == delimiter ) {
+                if( pos - start &gt; 1 )
+                    subStrings.push_back( str.substr( start, pos-start ) );
+                start = pos+1;</span>
+            }
+<span style = "background-color:#fdd">        }
+        if( start &lt; str.size() )
+            subStrings.push_back( str.substr( start, str.size()-start ) );
+        return subStrings;
+    }</span>
+
+<span style = "background-color:#dfd">    std::ostream&amp; operator &lt;&lt; ( std::ostream&amp; os, pluralise const&amp; pluraliser ) {
+        os &lt;&lt; pluraliser.m_count &lt;&lt; ' ' &lt;&lt; pluraliser.m_label;
+        if( pluraliser.m_count != 1 )
+            os &lt;&lt; 's';
+        return os;
+    }</span>
+
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

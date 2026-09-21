@@ -1,0 +1,180 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_istream.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/internal/catch_istream.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_debug_console.hpp&gt;
+#include &lt;catch2/internal/catch_unique_ptr.hpp&gt;
+#include &lt;catch2/internal/catch_stdstreams.hpp&gt;
+
+#include &lt;cstdio&gt;
+#include &lt;fstream&gt;
+#include &lt;sstream&gt;
+#include &lt;vector&gt;
+
+namespace Catch {
+
+<span style = "background-color:#dfd">    Catch::IStream::~IStream() = default;</span>
+
+namespace Detail {
+    namespace {
+        template&lt;typename WriterF, std::size_t bufferSize=256&gt;
+        class StreamBufImpl final : public std::streambuf {
+            char data[bufferSize];
+            WriterF m_writer;
+
+        public:
+<span style = "background-color:#fdd">            StreamBufImpl() {
+                setp( data, data + sizeof(data) );
+            }</span>
+
+<span style = "background-color:#fdd">            ~StreamBufImpl() noexcept override {
+                StreamBufImpl::sync();
+            }</span>
+
+        private:
+<span style = "background-color:#fdd">            int overflow( int c ) override {
+                sync();</span>
+
+<span style = "background-color:#fdd">                if( c != EOF ) {
+                    if( pbase() == epptr() )
+                        m_writer( std::string( 1, static_cast&lt;char&gt;( c ) ) );</span>
+                    else
+<span style = "background-color:#fdd">                        sputc( static_cast&lt;char&gt;( c ) );</span>
+                }
+<span style = "background-color:#fdd">                return 0;
+            }</span>
+
+<span style = "background-color:#fdd">            int sync() override {
+                if( pbase() != pptr() ) {
+                    m_writer( std::string( pbase(), static_cast&lt;std::string::size_type&gt;( pptr() - pbase() ) ) );
+                    setp( pbase(), epptr() );</span>
+                }
+<span style = "background-color:#fdd">                return 0;
+            }</span>
+        };
+
+        ///////////////////////////////////////////////////////////////////////////
+
+        struct OutputDebugWriter {
+
+<span style = "background-color:#fdd">            void operator()( std::string const&amp; str ) {
+                if ( !str.empty() ) {
+                    writeToDebugConsole( str );</span>
+                }
+<span style = "background-color:#fdd">            }</span>
+        };
+
+        ///////////////////////////////////////////////////////////////////////////
+
+        class FileStream final : public IStream {
+            std::ofstream m_ofs;
+        public:
+<span style = "background-color:#fdd">            FileStream( std::string const&amp; filename ) {
+                m_ofs.open( filename.c_str() );
+                CATCH_ENFORCE( !m_ofs.fail(), "Unable to open file: '" &lt;&lt; filename &lt;&lt; '\'' );
+                m_ofs &lt;&lt; std::unitbuf;
+            }</span>
+        public: // IStream
+<span style = "background-color:#fdd">            std::ostream&amp; stream() override {
+                return m_ofs;
+            }</span>
+        };
+
+        ///////////////////////////////////////////////////////////////////////////
+
+        class CoutStream final : public IStream {
+            std::ostream m_os;
+        public:
+            // Store the streambuf from cout up-front because
+            // cout may get redirected when running tests
+<span style = "background-color:#dfd">            CoutStream() : m_os( Catch::cout().rdbuf() ) {}</span>
+
+        public: // IStream
+<span style = "background-color:#dfd">            std::ostream&amp; stream() override { return m_os; }
+            bool isConsole() const override { return true; }</span>
+        };
+
+        class CerrStream : public IStream {
+            std::ostream m_os;
+
+        public:
+            // Store the streambuf from cerr up-front because
+            // cout may get redirected when running tests
+<span style = "background-color:#fdd">            CerrStream(): m_os( Catch::cerr().rdbuf() ) {}</span>
+
+        public: // IStream
+<span style = "background-color:#fdd">            std::ostream&amp; stream() override { return m_os; }
+            bool isConsole() const override { return true; }</span>
+        };
+
+        ///////////////////////////////////////////////////////////////////////////
+
+        class DebugOutStream final : public IStream {
+            Detail::unique_ptr&lt;StreamBufImpl&lt;OutputDebugWriter&gt;&gt; m_streamBuf;
+            std::ostream m_os;
+        public:
+            DebugOutStream()
+<span style = "background-color:#fdd">            :   m_streamBuf( Detail::make_unique&lt;StreamBufImpl&lt;OutputDebugWriter&gt;&gt;() ),
+                m_os( m_streamBuf.get() )
+            {}</span>
+
+        public: // IStream
+<span style = "background-color:#fdd">            std::ostream&amp; stream() override { return m_os; }</span>
+        };
+
+    } // unnamed namespace
+} // namespace Detail
+
+    ///////////////////////////////////////////////////////////////////////////
+
+<span style = "background-color:#dfd">    auto makeStream( std::string const&amp; filename ) -&gt; Detail::unique_ptr&lt;IStream&gt; {
+        if ( filename.empty() || filename == "-" ) {
+            return Detail::make_unique&lt;Detail::CoutStream&gt;();</span>
+        }
+<span style = "background-color:#fdd">        if( filename[0] == '%' ) {
+            if ( filename == "%debug" ) {
+                return Detail::make_unique&lt;Detail::DebugOutStream&gt;();
+            } else if ( filename == "%stderr" ) {
+                return Detail::make_unique&lt;Detail::CerrStream&gt;();
+            } else if ( filename == "%stdout" ) {
+                return Detail::make_unique&lt;Detail::CoutStream&gt;();
+            } else {
+                CATCH_ERROR( "Unrecognised stream: '" &lt;&lt; filename &lt;&lt; '\'' );</span>
+            }
+        }
+<span style = "background-color:#fdd">        return Detail::make_unique&lt;Detail::FileStream&gt;( filename );</span>
+<span style = "background-color:#dfd">    }</span>
+
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

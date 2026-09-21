@@ -1,0 +1,157 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_registrars.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_REPORTER_REGISTRARS_HPP_INCLUDED
+#define CATCH_REPORTER_REGISTRARS_HPP_INCLUDED
+
+#include &lt;catch2/interfaces/catch_interfaces_reporter_factory.hpp&gt;
+#include &lt;catch2/internal/catch_compiler_capabilities.hpp&gt;
+#include &lt;catch2/internal/catch_unique_name.hpp&gt;
+#include &lt;catch2/internal/catch_unique_ptr.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_void_type.hpp&gt;
+
+#include &lt;type_traits&gt;
+
+namespace Catch {
+
+    namespace Detail {
+
+        template &lt;typename T, typename = void&gt;
+        struct has_description : std::false_type {};
+
+        template &lt;typename T&gt;
+        struct has_description&lt;
+            T,
+            void_t&lt;decltype( T::getDescription() )&gt;&gt;
+            : std::true_type {};
+
+        //! Indirection for reporter registration, so that the error handling is
+        //! independent on the reporter's concrete type
+        void registerReporterImpl( std::string const&amp; name,
+                                   IReporterFactoryPtr reporterPtr );
+        //! Actually registers the factory, independent on listener's concrete type
+        void registerListenerImpl( Detail::unique_ptr&lt;EventListenerFactory&gt; listenerFactory );
+    } // namespace Detail
+
+    class IEventListener;
+    using IEventListenerPtr = Detail::unique_ptr&lt;IEventListener&gt;;
+
+    template &lt;typename T&gt;
+    class ReporterFactory : public IReporterFactory {
+
+<span style = "background-color:#dfd">        IEventListenerPtr create( ReporterConfig&amp;&amp; config ) const override {
+            return Detail::make_unique&lt;T&gt;( CATCH_MOVE(config) );
+        }</span>
+
+<span style = "background-color:#fdd">        std::string getDescription() const override {
+            return T::getDescription();
+        }</span>
+    };
+
+
+    template&lt;typename T&gt;
+    class ReporterRegistrar {
+    public:
+        explicit ReporterRegistrar( std::string const&amp; name ) {
+            registerReporterImpl( name,
+                                  Detail::make_unique&lt;ReporterFactory&lt;T&gt;&gt;() );
+        }
+    };
+
+    template&lt;typename T&gt;
+    class ListenerRegistrar {
+
+        class TypedListenerFactory : public EventListenerFactory {
+            StringRef m_listenerName;
+
+            std::string getDescriptionImpl( std::true_type ) const {
+                return T::getDescription();
+            }
+
+            std::string getDescriptionImpl( std::false_type ) const {
+                return "(No description provided)";
+            }
+
+        public:
+            TypedListenerFactory( StringRef listenerName ):
+                m_listenerName( listenerName ) {}
+
+            IEventListenerPtr create( IConfig const* config ) const override {
+                return Detail::make_unique&lt;T&gt;( config );
+            }
+
+            StringRef getName() const override {
+                return m_listenerName;
+            }
+
+            std::string getDescription() const override {
+                return getDescriptionImpl( Detail::has_description&lt;T&gt;{} );
+            }
+        };
+
+    public:
+        ListenerRegistrar(StringRef listenerName) {
+            registerListenerImpl( Detail::make_unique&lt;TypedListenerFactory&gt;(listenerName) );
+        }
+    };
+}
+
+#if !defined(CATCH_CONFIG_DISABLE)
+
+#    define CATCH_REGISTER_REPORTER( name, reporterType )                      \
+        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                              \
+        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                               \
+        namespace {                                                            \
+            Catch::ReporterRegistrar&lt;reporterType&gt; INTERNAL_CATCH_UNIQUE_NAME( \
+                catch_internal_RegistrarFor )( name );                         \
+        }                                                                      \
+        CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
+
+#    define CATCH_REGISTER_LISTENER( listenerType )                            \
+        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                              \
+        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                               \
+        namespace {                                                            \
+            Catch::ListenerRegistrar&lt;listenerType&gt; INTERNAL_CATCH_UNIQUE_NAME( \
+                catch_internal_RegistrarFor )( #listenerType##_catch_sr );     \
+        }                                                                      \
+        CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
+
+#else // CATCH_CONFIG_DISABLE
+
+#define CATCH_REGISTER_REPORTER(name, reporterType)
+#define CATCH_REGISTER_LISTENER(listenerType)
+
+#endif // CATCH_CONFIG_DISABLE
+
+#endif // CATCH_REPORTER_REGISTRARS_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

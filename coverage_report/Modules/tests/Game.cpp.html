@@ -1,0 +1,150 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>Game.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+#include "Game.h"
+#include &lt;stdexcept&gt;
+
+<span style = "background-color:#dfd">Game::Game(int startingBalance) : balance(startingBalance) {}</span>
+
+<span style = "background-color:#dfd">void Game::startRound(int bet, Deck presetDeck) {
+	if (bet &lt;= 0 || bet &gt; balance) {</span>
+<span style = "background-color:#fdd">		throw std::invalid_argument("Ugyldig indsats");</span>
+	}
+
+<span style = "background-color:#dfd">	currentBet = bet;
+	balance -= bet;
+	gameOver = false;</span>
+
+<span style = "background-color:#dfd">	deck = std::move(presetDeck); // Bruger det forudbestemte sÃ¦t kort
+	playerHand = Hand();
+	dealer = Dealer();</span>
+
+
+<span style = "background-color:#dfd">	playerHand.addCard(deck.dealCard());
+	dealer.addCard(deck.dealCard());
+	playerHand.addCard(deck.dealCard());
+	dealer.addCard(deck.dealCard());
+}
+void Game::startRound(int bet) {
+	Deck freshDeck;
+	freshDeck.shuffle();
+	startRound(bet, std::move(freshDeck));
+}</span>
+
+
+
+<span style = "background-color:#dfd">GameResult Game::playerHit() {
+	if (gameOver) {
+		return determineOutcome();</span>
+	}
+
+<span style = "background-color:#dfd">	playerHand.addCard(deck.dealCard());</span>
+
+<span style = "background-color:#dfd">	if (playerHand.isBust()) {</span>
+<span style = "background-color:#fdd">		gameOver = true;
+		GameResult result = GameResult::PlayerBust;
+		applyPayout(result);
+		return GameResult::PlayerBust;</span>
+	}
+
+<span style = "background-color:#dfd">	return GameResult::InProgress;
+}</span>
+
+<span style = "background-color:#dfd">GameResult Game::playerStand() {
+	if (gameOver) {</span>
+<span style = "background-color:#fdd">		return determineOutcome();</span>
+	}
+
+<span style = "background-color:#dfd">	dealer.playTurn(deck);
+	gameOver = true;
+	GameResult result = determineOutcome();
+	applyPayout(result);
+	return result;
+}</span>
+
+<span style = "background-color:#dfd">GameResult Game::determineOutcome() const {
+	if (playerHand.isBust()) {</span>
+<span style = "background-color:#fdd">		return GameResult::PlayerBust;</span>
+	}
+<span style = "background-color:#dfd">	if (dealer.getHand().isBust()) {</span>
+<span style = "background-color:#fdd">		return GameResult::PlayerWins;</span>
+	}
+<span style = "background-color:#dfd">	if (playerHand.isBlackjack() &amp;&amp; !dealer.getHand().isBlackjack()) {</span>
+<span style = "background-color:#fdd">		return GameResult::PlayerBlackjack;</span>
+	}
+
+<span style = "background-color:#dfd">	int playerValue = playerHand.getValue();
+	int dealerValue = dealer.getHand().getValue();</span>
+
+<span style = "background-color:#dfd">	if (playerValue &gt; dealerValue) return GameResult::PlayerWins;
+	if (dealerValue &gt; playerValue) return GameResult::DealerWins;</span>
+<span style = "background-color:#fdd">	return GameResult::Push;</span>
+
+<span style = "background-color:#dfd">}</span>
+
+<span style = "background-color:#dfd">void Game::applyPayout(GameResult result) {
+	switch (result) {</span>
+		case GameResult::PlayerBust:
+		// Spilleren taber indsatsen
+<span style = "background-color:#fdd">			break;</span>
+		case GameResult::PlayerBlackjack:
+<span style = "background-color:#fdd">		balance += static_cast&lt;int&gt;(currentBet * 2.5); // Blackjack betaler 3:2
+			break;</span>
+		case GameResult::PlayerWins:
+<span style = "background-color:#fdd">		balance += currentBet * 2; // Spilleren vinder dobbelt indsatsen
+			break;</span>
+		case GameResult::DealerWins:
+		// Spilleren taber indsatsen
+<span style = "background-color:#fdd">			break;</span>
+		case GameResult::Push:
+<span style = "background-color:#fdd">		balance += currentBet; // Spilleren fÃ¥r indsatsen tilbage</span>
+			break;
+		default:
+			break;
+	}
+<span style = "background-color:#dfd">		currentBet = 0; // Nulstil den aktuelle indsats efter udbetalingen
+}</span>
+
+
+<span style = "background-color:#dfd">int Game::getPlayerValue() const {
+	return playerHand.getValue();
+}</span>
+
+<span style = "background-color:#dfd">int Game::getDealerValue() const {
+	return dealer.getHand().getValue();
+}</span>
+
+<span style = "background-color:#dfd">bool Game::isOver() const {
+	return gameOver;
+}</span>
+
+<span style = "background-color:#fdd">int Game::getBalance() const {
+	return balance;
+}</span>
+
+<span style = "background-color:#fdd">int Game::getCurrentBet() const {
+	return currentBet;
+}</span></pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

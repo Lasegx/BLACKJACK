@@ -1,0 +1,273 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_config.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/catch_config.hpp&gt;
+#include &lt;catch2/catch_user_config.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_parse_numbers.hpp&gt;
+#include &lt;catch2/internal/catch_stdstreams.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_test_spec_parser.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_tag_alias_registry.hpp&gt;
+#include &lt;catch2/internal/catch_getenv.hpp&gt;
+
+#include &lt;fstream&gt;
+
+namespace Catch {
+
+    namespace {
+<span style = "background-color:#dfd">        static bool enableBazelEnvSupport() {</span>
+#if defined( CATCH_CONFIG_BAZEL_SUPPORT )
+            return true;
+#else
+<span style = "background-color:#dfd">            return Detail::getEnv( "BAZEL_TEST" ) != nullptr;</span>
+#endif
+<span style = "background-color:#dfd">        }</span>
+
+        struct bazelShardingOptions {
+            unsigned int shardIndex, shardCount;
+            std::string shardFilePath;
+        };
+
+<span style = "background-color:#fdd">        static Optional&lt;bazelShardingOptions&gt; readBazelShardingOptions() {
+            const auto bazelShardIndex = Detail::getEnv( "TEST_SHARD_INDEX" );
+            const auto bazelShardTotal = Detail::getEnv( "TEST_TOTAL_SHARDS" );
+            const auto bazelShardInfoFile = Detail::getEnv( "TEST_SHARD_STATUS_FILE" );</span>
+
+
+<span style = "background-color:#fdd">            const bool has_all =</span>
+                bazelShardIndex &amp;&amp; bazelShardTotal &amp;&amp; bazelShardInfoFile;
+<span style = "background-color:#fdd">            if ( !has_all ) {</span>
+                // We provide nice warning message if the input is
+                // misconfigured.
+<span style = "background-color:#fdd">                auto warn = []( const char* env_var ) {
+                    Catch::cerr()</span>
+                        &lt;&lt; "Warning: Bazel shard configuration is missing '"
+                        &lt;&lt; env_var &lt;&lt; "'. Shard configuration is skipped.\n";
+<span style = "background-color:#fdd">                };
+                if ( !bazelShardIndex ) {
+                    warn( "TEST_SHARD_INDEX" );</span>
+                }
+<span style = "background-color:#fdd">                if ( !bazelShardTotal ) {
+                    warn( "TEST_TOTAL_SHARDS" );</span>
+                }
+<span style = "background-color:#fdd">                if ( !bazelShardInfoFile ) {
+                    warn( "TEST_SHARD_STATUS_FILE" );</span>
+                }
+<span style = "background-color:#fdd">                return {};</span>
+            }
+
+<span style = "background-color:#fdd">            auto shardIndex = parseUInt( bazelShardIndex );
+            if ( !shardIndex ) {
+                Catch::cerr()</span>
+                    &lt;&lt; "Warning: could not parse 'TEST_SHARD_INDEX' ('" &lt;&lt; bazelShardIndex
+                    &lt;&lt; "') as unsigned int.\n";
+<span style = "background-color:#fdd">                return {};</span>
+            }
+<span style = "background-color:#fdd">            auto shardTotal = parseUInt( bazelShardTotal );
+            if ( !shardTotal ) {
+                Catch::cerr()</span>
+                    &lt;&lt; "Warning: could not parse 'TEST_TOTAL_SHARD' ('"
+                    &lt;&lt; bazelShardTotal &lt;&lt; "') as unsigned int.\n";
+<span style = "background-color:#fdd">                return {};</span>
+            }
+
+<span style = "background-color:#fdd">            return bazelShardingOptions{</span>
+                *shardIndex, *shardTotal, bazelShardInfoFile };
+
+<span style = "background-color:#fdd">        }</span>
+    } // end namespace
+
+
+    bool operator==( ProcessedReporterSpec const&amp; lhs,
+<span style = "background-color:#fdd">                     ProcessedReporterSpec const&amp; rhs ) {
+        return lhs.name == rhs.name &amp;&amp;</span>
+               lhs.outputFilename == rhs.outputFilename &amp;&amp;
+               lhs.colourMode == rhs.colourMode &amp;&amp;
+               lhs.customOptions == rhs.customOptions;
+<span style = "background-color:#fdd">    }</span>
+
+    Config::Config( ConfigData const&amp; data ):
+<span style = "background-color:#dfd">        m_data( data ) {</span>
+        // We need to trim filter specs to avoid trouble with superfluous
+        // whitespace (esp. important for bdd macros, as those are manually
+        // aligned with whitespace).
+
+<span style = "background-color:#dfd">        for (auto&amp; elem : m_data.testsOrTags) {</span>
+<span style = "background-color:#fdd">            elem = trim(elem);
+        }</span>
+<span style = "background-color:#dfd">        for (auto&amp; elem : m_data.sectionsToRun) {</span>
+<span style = "background-color:#fdd">            elem = trim(elem);
+        }</span>
+
+        // Insert the default reporter if user hasn't asked for a specific one
+<span style = "background-color:#dfd">        if ( m_data.reporterSpecifications.empty() ) {
+            m_data.reporterSpecifications.push_back( {</span>
+#if defined( CATCH_CONFIG_DEFAULT_REPORTER )
+                CATCH_CONFIG_DEFAULT_REPORTER,
+#else
+                "console",
+#endif
+                {}, {}, {}
+            } );
+        }
+
+<span style = "background-color:#dfd">        if ( enableBazelEnvSupport() ) {</span>
+<span style = "background-color:#fdd">            readBazelEnvVars();</span>
+        }
+
+        // Bazel support can modify the test specs, so parsing has to happen
+        // after reading Bazel env vars.
+<span style = "background-color:#dfd">        TestSpecParser parser( ITagAliasRegistry::get() );
+        if ( !m_data.testsOrTags.empty() ) {</span>
+<span style = "background-color:#fdd">            m_hasTestFilters = true;
+            for ( auto const&amp; testOrTags : m_data.testsOrTags ) {
+                parser.parse( testOrTags );
+            }</span>
+        }
+<span style = "background-color:#dfd">        m_testSpec = parser.testSpec();</span>
+
+
+        // We now fixup the reporter specs to handle default output spec,
+        // default colour spec, etc
+<span style = "background-color:#dfd">        bool defaultOutputUsed = false;
+        for ( auto const&amp; reporterSpec : m_data.reporterSpecifications ) {</span>
+            // We do the default-output check separately, while always
+            // using the default output below to make the code simpler
+            // and avoid superfluous copies.
+<span style = "background-color:#dfd">            if ( reporterSpec.outputFile().none() ) {
+                CATCH_ENFORCE( !defaultOutputUsed,</span>
+                               "Internal error: cannot use default output for "
+                               "multiple reporters" );
+<span style = "background-color:#dfd">                defaultOutputUsed = true;</span>
+            }
+
+<span style = "background-color:#dfd">            m_processedReporterSpecs.push_back( ProcessedReporterSpec{</span>
+                reporterSpec.name(),
+                reporterSpec.outputFile() ? *reporterSpec.outputFile()
+                                          : data.defaultOutputFilename,
+                reporterSpec.colourMode().valueOr( data.defaultColourMode ),
+                reporterSpec.customOptions() } );
+<span style = "background-color:#dfd">        }
+    }</span>
+
+<span style = "background-color:#dfd">    Config::~Config() = default;</span>
+
+
+<span style = "background-color:#dfd">    bool Config::listTests() const          { return m_data.listTests; }
+    bool Config::listTags() const           { return m_data.listTags; }
+    bool Config::listReporters() const      { return m_data.listReporters; }
+    bool Config::listListeners() const      { return m_data.listListeners; }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;std::string&gt; const&amp; Config::getTestsOrTags() const { return m_data.testsOrTags; }</span>
+<span style = "background-color:#dfd">    std::vector&lt;std::string&gt; const&amp; Config::getSectionsToRun() const { return m_data.sectionsToRun; }</span>
+
+<span style = "background-color:#fdd">    std::vector&lt;ReporterSpec&gt; const&amp; Config::getReporterSpecs() const {
+        return m_data.reporterSpecifications;
+    }</span>
+
+    std::vector&lt;ProcessedReporterSpec&gt; const&amp;
+<span style = "background-color:#dfd">    Config::getProcessedReporterSpecs() const {
+        return m_processedReporterSpecs;
+    }</span>
+
+<span style = "background-color:#dfd">    TestSpec const&amp; Config::testSpec() const { return m_testSpec; }</span>
+<span style = "background-color:#fdd">    bool Config::hasTestFilters() const { return m_hasTestFilters; }</span>
+
+<span style = "background-color:#fdd">    bool Config::showHelp() const { return m_data.showHelp; }</span>
+
+    // IConfig interface
+<span style = "background-color:#dfd">    bool Config::allowThrows() const                   { return !m_data.noThrow; }
+    StringRef Config::name() const { return m_data.name.empty() ? m_data.processName : m_data.name; }
+    bool Config::includeSuccessfulResults() const      { return m_data.showSuccessfulTests; }</span>
+<span style = "background-color:#fdd">    bool Config::warnAboutMissingAssertions() const {
+        return !!( m_data.warnings &amp; WarnAbout::NoAssertions );
+    }
+    bool Config::warnAboutUnmatchedTestSpecs() const {
+        return !!( m_data.warnings &amp; WarnAbout::UnmatchedTestSpec );
+    }
+    bool Config::zeroTestsCountAsSuccess() const       { return m_data.allowZeroTests; }</span>
+<span style = "background-color:#dfd">    ShowDurations Config::showDurations() const        { return m_data.showDurations; }
+    double Config::minDuration() const                 { return m_data.minDuration; }
+    TestRunOrder Config::runOrder() const              { return m_data.runOrder; }
+    uint32_t Config::rngSeed() const                   { return m_data.rngSeed; }
+    unsigned int Config::shardCount() const            { return m_data.shardCount; }
+    unsigned int Config::shardIndex() const            { return m_data.shardIndex; }</span>
+<span style = "background-color:#fdd">    ColourMode Config::defaultColourMode() const       { return m_data.defaultColourMode; }
+    bool Config::shouldDebugBreak() const              { return m_data.shouldDebugBreak; }</span>
+<span style = "background-color:#dfd">    int Config::abortAfter() const                     { return m_data.abortAfter; }</span>
+<span style = "background-color:#fdd">    bool Config::showInvisibles() const                { return m_data.showInvisibles; }
+    Verbosity Config::verbosity() const                { return m_data.verbosity; }</span>
+
+<span style = "background-color:#fdd">    bool Config::skipBenchmarks() const                           { return m_data.skipBenchmarks; }</span>
+<span style = "background-color:#dfd">    bool Config::benchmarkNoAnalysis() const                      { return m_data.benchmarkNoAnalysis; }</span>
+<span style = "background-color:#fdd">    unsigned int Config::benchmarkSamples() const                 { return m_data.benchmarkSamples; }
+    double Config::benchmarkConfidenceInterval() const            { return m_data.benchmarkConfidenceInterval; }
+    unsigned int Config::benchmarkResamples() const               { return m_data.benchmarkResamples; }
+    std::chrono::milliseconds Config::benchmarkWarmupTime() const { return std::chrono::milliseconds(m_data.benchmarkWarmupTime); }</span>
+
+<span style = "background-color:#fdd">    void Config::readBazelEnvVars() {</span>
+        // Register a JUnit reporter for Bazel. Bazel sets an environment
+        // variable with the path to XML output. If this file is written to
+        // during test, Bazel will not generate a default XML output.
+        // This allows the XML output file to contain higher level of detail
+        // than what is possible otherwise.
+<span style = "background-color:#fdd">        const auto bazelOutputFile = Detail::getEnv( "XML_OUTPUT_FILE" );</span>
+
+<span style = "background-color:#fdd">        if ( bazelOutputFile ) {
+            m_data.reporterSpecifications.push_back(</span>
+                { "junit", std::string( bazelOutputFile ), {}, {} } );
+        }
+
+<span style = "background-color:#fdd">        const auto bazelTestSpec = Detail::getEnv( "TESTBRIDGE_TEST_ONLY" );
+        if ( bazelTestSpec ) {</span>
+            // Presumably the test spec from environment should overwrite
+            // the one we got from CLI (if we got any)
+<span style = "background-color:#fdd">            m_data.testsOrTags.clear();
+            m_data.testsOrTags.push_back( bazelTestSpec );</span>
+        }
+
+<span style = "background-color:#fdd">        const auto bazelShardOptions = readBazelShardingOptions();
+        if ( bazelShardOptions ) {
+            std::ofstream f( bazelShardOptions-&gt;shardFilePath,</span>
+                             std::ios_base::out | std::ios_base::trunc );
+<span style = "background-color:#fdd">            if ( f.is_open() ) {
+                f &lt;&lt; "";
+                m_data.shardIndex = bazelShardOptions-&gt;shardIndex;
+                m_data.shardCount = bazelShardOptions-&gt;shardCount;</span>
+            }
+<span style = "background-color:#fdd">        }
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

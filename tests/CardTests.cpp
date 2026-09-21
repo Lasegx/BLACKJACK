@@ -29,3 +29,15 @@ TEST_CASE("toString giver rigtig tekst for billedkort")
 	REQUIRE(std::string(toString(Rank::King)) == "K");
 	REQUIRE(std::string(toString(Rank::Ace)) == "A");
 }
+
+TEST_CASE("Ugyldig rank giver fallback-værdier") {
+	Rank invaild = static_cast<Rank>(99);
+	REQUIRE(valueOf(invaild) == 0);
+	REQUIRE(std::string(toString(invaild)) == "?");
+
+}
+
+TEST_CASE("Ugyldig suit giver fallback-tekst") {
+	Suit invaild = static_cast<Suit>(99);
+	REQUIRE(std::string(toString(invaild)) == "?");
+}

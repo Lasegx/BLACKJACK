@@ -1,0 +1,142 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_message.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/catch_message.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_capture.hpp&gt;
+#include &lt;catch2/internal/catch_uncaught_exceptions.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;stack&gt;
+
+namespace Catch {
+
+    ////////////////////////////////////////////////////////////////////////////
+
+
+    ScopedMessage::ScopedMessage( MessageBuilder&amp;&amp; builder ):
+<span style = "background-color:#fdd">        m_info( CATCH_MOVE(builder.m_info) ) {
+        m_info.message = builder.m_stream.str();
+        getResultCapture().pushScopedMessage( m_info );
+    }</span>
+
+    ScopedMessage::ScopedMessage( ScopedMessage&amp;&amp; old ) noexcept:
+<span style = "background-color:#fdd">        m_info( CATCH_MOVE( old.m_info ) ) {
+        old.m_moved = true;
+    }</span>
+
+<span style = "background-color:#fdd">    ScopedMessage::~ScopedMessage() {
+        if ( !uncaught_exceptions() &amp;&amp; !m_moved ){
+            getResultCapture().popScopedMessage(m_info);</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+
+    Capturer::Capturer( StringRef macroName,
+                        SourceLineInfo const&amp; lineInfo,
+                        ResultWas::OfType resultType,
+                        StringRef names ):
+<span style = "background-color:#fdd">        m_resultCapture( getResultCapture() ) {</span>
+        auto trimmed = [&amp;] (size_t start, size_t end) {
+<span style = "background-color:#fdd">            while (names[start] == ',' || isspace(static_cast&lt;unsigned char&gt;(names[start]))) {
+                ++start;
+            }
+            while (names[end] == ',' || isspace(static_cast&lt;unsigned char&gt;(names[end]))) {
+                --end;
+            }
+            return names.substr(start, end - start + 1);
+        };</span>
+        auto skipq = [&amp;] (size_t start, char quote) {
+<span style = "background-color:#fdd">            for (auto i = start + 1; i &lt; names.size() ; ++i) {
+                if (names[i] == quote)
+                    return i;
+                if (names[i] == '\\')
+                    ++i;
+            }
+            CATCH_INTERNAL_ERROR("CAPTURE parsing encountered unmatched quote");
+        };</span>
+
+<span style = "background-color:#fdd">        size_t start = 0;
+        std::stack&lt;char&gt; openings;
+        for (size_t pos = 0; pos &lt; names.size(); ++pos) {
+            char c = names[pos];
+            switch (c) {</span>
+            case '[':
+            case '{':
+            case '(':
+            // It is basically impossible to disambiguate between
+            // comparison and start of template args in this context
+//            case '&lt;':
+<span style = "background-color:#fdd">                openings.push(c);
+                break;</span>
+            case ']':
+            case '}':
+            case ')':
+//           case '&gt;':
+<span style = "background-color:#fdd">                openings.pop();
+                break;</span>
+            case '"':
+            case '\'':
+<span style = "background-color:#fdd">                pos = skipq(pos, c);
+                break;</span>
+            case ',':
+<span style = "background-color:#fdd">                if (start != pos &amp;&amp; openings.empty()) {
+                    m_messages.emplace_back(macroName, lineInfo, resultType);
+                    m_messages.back().message = static_cast&lt;std::string&gt;(trimmed(start, pos));
+                    m_messages.back().message += " := ";
+                    start = pos;</span>
+                }
+            }
+<span style = "background-color:#fdd">        }
+        assert(openings.empty() &amp;&amp; "Mismatched openings");
+        m_messages.emplace_back(macroName, lineInfo, resultType);
+        m_messages.back().message = static_cast&lt;std::string&gt;(trimmed(start, names.size() - 1));
+        m_messages.back().message += " := ";
+    }
+    Capturer::~Capturer() {
+        if ( !uncaught_exceptions() ){
+            assert( m_captured == m_messages.size() );
+            for( size_t i = 0; i &lt; m_captured; ++i  )
+                m_resultCapture.popScopedMessage( m_messages[i] );</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void Capturer::captureValue( size_t index, std::string const&amp; value ) {
+        assert( index &lt; m_messages.size() );
+        m_messages[index].message += value;
+        m_resultCapture.pushScopedMessage( m_messages[index] );
+        m_captured++;
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,203 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_teamcity.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_teamcity.hpp&gt;
+
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;ostream&gt;
+
+namespace Catch {
+
+    namespace {
+        // if string has a : in first line will set indent to follow it on
+        // subsequent lines
+<span style = "background-color:#fdd">        void printHeaderString(std::ostream&amp; os, std::string const&amp; _string, std::size_t indent = 0) {
+            std::size_t i = _string.find(": ");
+            if (i != std::string::npos)
+                i += 2;</span>
+            else
+<span style = "background-color:#fdd">                i = 0;
+            os &lt;&lt; TextFlow::Column(_string)</span>
+                  .indent(indent + i)
+                  .initialIndent(indent) &lt;&lt; '\n';
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        std::string escape(StringRef str) {
+            std::string escaped = static_cast&lt;std::string&gt;(str);
+            replaceInPlace(escaped, "|", "||");
+            replaceInPlace(escaped, "'", "|'");
+            replaceInPlace(escaped, "\n", "|n");
+            replaceInPlace(escaped, "\r", "|r");
+            replaceInPlace(escaped, "[", "|[");
+            replaceInPlace(escaped, "]", "|]");
+            return escaped;
+        }</span>
+    } // end anonymous namespace
+
+
+<span style = "background-color:#fdd">    TeamCityReporter::~TeamCityReporter() = default;</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::testRunStarting( TestRunInfo const&amp; runInfo ) {
+        m_stream &lt;&lt; "##teamcity[testSuiteStarted name='" &lt;&lt; escape( runInfo.name )</span>
+               &lt;&lt; "']\n";
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::testRunEnded( TestRunStats const&amp; runStats ) {
+        m_stream &lt;&lt; "##teamcity[testSuiteFinished name='"</span>
+               &lt;&lt; escape( runStats.runInfo.name ) &lt;&lt; "']\n";
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::assertionEnded(AssertionStats const&amp; assertionStats) {
+        AssertionResult const&amp; result = assertionStats.assertionResult;
+        if ( !result.isOk() ||</span>
+             result.getResultType() == ResultWas::ExplicitSkip ) {
+
+<span style = "background-color:#fdd">            ReusableStringStream msg;
+            if (!m_headerPrintedForThisSection)
+                printSectionHeader(msg.get());
+            m_headerPrintedForThisSection = true;</span>
+
+<span style = "background-color:#fdd">            msg &lt;&lt; result.getSourceInfo() &lt;&lt; '\n';</span>
+
+<span style = "background-color:#fdd">            switch (result.getResultType()) {</span>
+            case ResultWas::ExpressionFailed:
+<span style = "background-color:#fdd">                msg &lt;&lt; "expression failed";
+                break;</span>
+            case ResultWas::ThrewException:
+<span style = "background-color:#fdd">                msg &lt;&lt; "unexpected exception";
+                break;</span>
+            case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">                msg &lt;&lt; "fatal error condition";
+                break;</span>
+            case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">                msg &lt;&lt; "no exception was thrown where one was expected";
+                break;</span>
+            case ResultWas::ExplicitFailure:
+<span style = "background-color:#fdd">                msg &lt;&lt; "explicit failure";
+                break;</span>
+            case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">                msg &lt;&lt; "explicit skip";
+                break;</span>
+
+                // We shouldn't get here because of the isOk() test
+            case ResultWas::Ok:
+            case ResultWas::Info:
+            case ResultWas::Warning:
+<span style = "background-color:#fdd">                CATCH_ERROR("Internal error in TeamCity reporter");</span>
+                // These cases are here to prevent compiler warnings
+            case ResultWas::Unknown:
+            case ResultWas::FailureBit:
+            case ResultWas::Exception:
+<span style = "background-color:#fdd">                CATCH_ERROR("Not implemented");</span>
+            }
+<span style = "background-color:#fdd">            if (assertionStats.infoMessages.size() == 1)
+                msg &lt;&lt; " with message:";
+            if (assertionStats.infoMessages.size() &gt; 1)
+                msg &lt;&lt; " with messages:";
+            for (auto const&amp; messageInfo : assertionStats.infoMessages)
+                msg &lt;&lt; "\n  \"" &lt;&lt; messageInfo.message &lt;&lt; '"';</span>
+
+
+<span style = "background-color:#fdd">            if (result.hasExpression()) {
+                msg &lt;&lt;</span>
+                    "\n  " &lt;&lt; result.getExpressionInMacro() &lt;&lt; "\n"
+                    "with expansion:\n"
+                    "  " &lt;&lt; result.getExpandedExpression() &lt;&lt; '\n';
+            }
+
+<span style = "background-color:#fdd">            if ( result.getResultType() == ResultWas::ExplicitSkip ) {
+                m_stream &lt;&lt; "##teamcity[testIgnored";
+            } else if ( currentTestCaseInfo-&gt;okToFail() ) {
+                msg &lt;&lt; "- failure ignore as test marked as 'ok to fail'\n";
+                m_stream &lt;&lt; "##teamcity[testIgnored";
+            } else {
+                m_stream &lt;&lt; "##teamcity[testFailed";</span>
+            }
+<span style = "background-color:#fdd">            m_stream &lt;&lt; " name='" &lt;&lt; escape( currentTestCaseInfo-&gt;name ) &lt;&lt; '\''</span>
+                     &lt;&lt; " message='" &lt;&lt; escape( msg.str() ) &lt;&lt; '\'' &lt;&lt; "]\n";
+<span style = "background-color:#fdd">        }
+        m_stream.flush();
+    }</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::testCaseStarting(TestCaseInfo const&amp; testInfo) {
+        m_testTimer.start();
+        StreamingReporterBase::testCaseStarting(testInfo);
+        m_stream &lt;&lt; "##teamcity[testStarted name='"</span>
+            &lt;&lt; escape(testInfo.name) &lt;&lt; "']\n";
+<span style = "background-color:#fdd">        m_stream.flush();
+    }</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::testCaseEnded(TestCaseStats const&amp; testCaseStats) {
+        StreamingReporterBase::testCaseEnded(testCaseStats);
+        auto const&amp; testCaseInfo = *testCaseStats.testInfo;
+        if (!testCaseStats.stdOut.empty())
+            m_stream &lt;&lt; "##teamcity[testStdOut name='"</span>
+            &lt;&lt; escape(testCaseInfo.name)
+            &lt;&lt; "' out='" &lt;&lt; escape(testCaseStats.stdOut) &lt;&lt; "']\n";
+<span style = "background-color:#fdd">        if (!testCaseStats.stdErr.empty())
+            m_stream &lt;&lt; "##teamcity[testStdErr name='"</span>
+            &lt;&lt; escape(testCaseInfo.name)
+            &lt;&lt; "' out='" &lt;&lt; escape(testCaseStats.stdErr) &lt;&lt; "']\n";
+<span style = "background-color:#fdd">        m_stream &lt;&lt; "##teamcity[testFinished name='"</span>
+            &lt;&lt; escape(testCaseInfo.name) &lt;&lt; "' duration='"
+            &lt;&lt; m_testTimer.getElapsedMilliseconds() &lt;&lt; "']\n";
+<span style = "background-color:#fdd">        m_stream.flush();
+    }</span>
+
+<span style = "background-color:#fdd">    void TeamCityReporter::printSectionHeader(std::ostream&amp; os) {
+        assert(!m_sectionStack.empty());</span>
+
+<span style = "background-color:#fdd">        if (m_sectionStack.size() &gt; 1) {
+            os &lt;&lt; lineOfChars('-') &lt;&lt; '\n';</span>
+
+            std::vector&lt;SectionInfo&gt;::const_iterator
+<span style = "background-color:#fdd">                it = m_sectionStack.begin() + 1, // Skip first section (test case)
+                itEnd = m_sectionStack.end();
+            for (; it != itEnd; ++it)
+                printHeaderString(os, it-&gt;name);
+            os &lt;&lt; lineOfChars('-') &lt;&lt; '\n';
+        }</span>
+
+<span style = "background-color:#fdd">        SourceLineInfo lineInfo = m_sectionStack.front().lineInfo;</span>
+
+<span style = "background-color:#fdd">        os &lt;&lt; lineInfo &lt;&lt; '\n';
+        os &lt;&lt; lineOfChars('.') &lt;&lt; "\n\n";
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

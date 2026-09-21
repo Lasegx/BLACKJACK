@@ -1,0 +1,228 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_random_integer_helpers.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#ifndef CATCH_RANDOM_INTEGER_HELPERS_HPP_INCLUDED
+#define CATCH_RANDOM_INTEGER_HELPERS_HPP_INCLUDED
+
+#include &lt;climits&gt;
+#include &lt;cstddef&gt;
+#include &lt;cstdint&gt;
+#include &lt;type_traits&gt;
+
+namespace Catch {
+    namespace Detail {
+
+        template &lt;std::size_t&gt;
+        struct SizedUnsignedType;
+#define SizedUnsignedTypeHelper( TYPE )        \
+    template &lt;&gt;                                \
+    struct SizedUnsignedType&lt;sizeof( TYPE )&gt; { \
+        using type = TYPE;                     \
+    }
+
+        SizedUnsignedTypeHelper( std::uint8_t );
+        SizedUnsignedTypeHelper( std::uint16_t );
+        SizedUnsignedTypeHelper( std::uint32_t );
+        SizedUnsignedTypeHelper( std::uint64_t );
+#undef SizedUnsignedTypeHelper
+
+        template &lt;std::size_t sz&gt;
+        using SizedUnsignedType_t = typename SizedUnsignedType&lt;sz&gt;::type;
+
+        template &lt;typename T&gt;
+        using DoubleWidthUnsignedType_t = SizedUnsignedType_t&lt;2 * sizeof( T )&gt;;
+
+        template &lt;typename T&gt;
+        struct ExtendedMultResult {
+            T upper;
+            T lower;
+            friend bool operator==( ExtendedMultResult const&amp; lhs,
+                                    ExtendedMultResult const&amp; rhs ) {
+                return lhs.upper == rhs.upper &amp;&amp; lhs.lower == rhs.lower;
+            }
+        };
+
+        // Returns 128 bit result of multiplying lhs and rhs
+        constexpr ExtendedMultResult&lt;std::uint64_t&gt;
+        extendedMult( std::uint64_t lhs, std::uint64_t rhs ) {
+            // We use the simple long multiplication approach for
+            // correctness, we can use platform specific builtins
+            // for performance later.
+
+            // Split the lhs and rhs into two 32bit "digits", so that we can
+            // do 64 bit arithmetic to handle carry bits.
+            //            32b    32b    32b    32b
+            //     lhs                  L1     L2
+            //   * rhs                  R1     R2
+            //            ------------------------
+            //                       |  R2 * L2  |
+            //                 |  R2 * L1  |
+            //                 |  R1 * L2  |
+            //           |  R1 * L1  |
+            //           -------------------------
+            //           |  a  |  b  |  c  |  d  |
+
+#define CarryBits( x ) ( x &gt;&gt; 32 )
+#define Digits( x ) ( x &amp; 0xFF'FF'FF'FF )
+
+            auto r2l2 = Digits( rhs ) * Digits( lhs );
+            auto r2l1 = Digits( rhs ) * CarryBits( lhs );
+            auto r1l2 = CarryBits( rhs ) * Digits( lhs );
+            auto r1l1 = CarryBits( rhs ) * CarryBits( lhs );
+
+            // Sum to columns first
+            auto d = Digits( r2l2 );
+            auto c = CarryBits( r2l2 ) + Digits( r2l1 ) + Digits( r1l2 );
+            auto b = CarryBits( r2l1 ) + CarryBits( r1l2 ) + Digits( r1l1 );
+            auto a = CarryBits( r1l1 );
+
+            // Propagate carries between columns
+            c += CarryBits( d );
+            b += CarryBits( c );
+            a += CarryBits( b );
+
+            // Remove the used carries
+            c = Digits( c );
+            b = Digits( b );
+            a = Digits( a );
+
+#undef CarryBits
+#undef Digits
+
+            return {
+                a &lt;&lt; 32 | b, // upper 64 bits
+                c &lt;&lt; 32 | d  // lower 64 bits
+            };
+        }
+
+        template &lt;typename UInt&gt;
+        constexpr ExtendedMultResult&lt;UInt&gt; extendedMult( UInt lhs, UInt rhs ) {
+            static_assert( std::is_unsigned&lt;UInt&gt;::value,
+                           "extendedMult can only handle unsigned integers" );
+            static_assert( sizeof( UInt ) &lt; sizeof( std::uint64_t ),
+                           "Generic extendedMult can only handle types smaller "
+                           "than uint64_t" );
+            using WideType = DoubleWidthUnsignedType_t&lt;UInt&gt;;
+
+            auto result = WideType( lhs ) * WideType( rhs );
+            return {
+                static_cast&lt;UInt&gt;( result &gt;&gt; ( CHAR_BIT * sizeof( UInt ) ) ),
+                static_cast&lt;UInt&gt;( result &amp; UInt( -1 ) ) };
+        }
+
+
+        template &lt;typename TargetType,
+                  typename Generator&gt;
+            std::enable_if_t&lt;sizeof(typename Generator::result_type) &gt;= sizeof(TargetType),
+<span style = "background-color:#dfd">            TargetType&gt; fillBitsFrom(Generator&amp; gen) {</span>
+            using gresult_type = typename Generator::result_type;
+            static_assert( std::is_unsigned&lt;TargetType&gt;::value, "Only unsigned integers are supported" );
+            static_assert( Generator::min() == 0 &amp;&amp;
+                           Generator::max() == static_cast&lt;gresult_type&gt;( -1 ),
+                           "Generator must be able to output all numbers in its result type (effectively it must be a random bit generator)" );
+
+            // We want to return the top bits from a generator, as they are
+            // usually considered higher quality.
+<span style = "background-color:#dfd">            constexpr auto generated_bits = sizeof( gresult_type ) * CHAR_BIT;
+            constexpr auto return_bits = sizeof( TargetType ) * CHAR_BIT;</span>
+
+<span style = "background-color:#dfd">            return static_cast&lt;TargetType&gt;( gen() &gt;&gt;</span>
+                                            ( generated_bits - return_bits) );
+<span style = "background-color:#dfd">        }</span>
+
+        template &lt;typename TargetType,
+                  typename Generator&gt;
+            std::enable_if_t&lt;sizeof(typename Generator::result_type) &lt; sizeof(TargetType),
+            TargetType&gt; fillBitsFrom(Generator&amp; gen) {
+            using gresult_type = typename Generator::result_type;
+            static_assert( std::is_unsigned&lt;TargetType&gt;::value,
+                           "Only unsigned integers are supported" );
+            static_assert( Generator::min() == 0 &amp;&amp;
+                           Generator::max() == static_cast&lt;gresult_type&gt;( -1 ),
+                           "Generator must be able to output all numbers in its result type (effectively it must be a random bit generator)" );
+
+            constexpr auto generated_bits = sizeof( gresult_type ) * CHAR_BIT;
+            constexpr auto return_bits = sizeof( TargetType ) * CHAR_BIT;
+            std::size_t filled_bits = 0;
+            TargetType ret = 0;
+            do {
+                ret &lt;&lt;= generated_bits;
+                ret |= gen();
+                filled_bits += generated_bits;
+            } while ( filled_bits &lt; return_bits );
+
+            return ret;
+        }
+
+        /*
+         * Transposes numbers into unsigned type while keeping their ordering
+         *
+         * This means that signed types are changed so that the ordering is
+         * [INT_MIN, ..., -1, 0, ..., INT_MAX], rather than order we would
+         * get by simple casting ([0, ..., INT_MAX, INT_MIN, ..., -1])
+         */
+        template &lt;typename OriginalType, typename UnsignedType&gt;
+        std::enable_if_t&lt;std::is_signed&lt;OriginalType&gt;::value, UnsignedType&gt;
+        transposeToNaturalOrder( UnsignedType in ) {
+            static_assert(
+                sizeof( OriginalType ) == sizeof( UnsignedType ),
+                "reordering requires the same sized types on both sides" );
+            static_assert( std::is_unsigned&lt;UnsignedType&gt;::value,
+                           "Input type must be unsigned" );
+            // Assuming 2s complement (standardized in current C++), the
+            // positive and negative numbers are already internally ordered,
+            // and their difference is in the top bit. Swapping it orders
+            // them the desired way.
+            constexpr auto highest_bit =
+                UnsignedType( 1 ) &lt;&lt; ( sizeof( UnsignedType ) * CHAR_BIT - 1 );
+            return static_cast&lt;UnsignedType&gt;( in ^ highest_bit );
+        }
+
+
+
+        template &lt;typename OriginalType,
+                  typename UnsignedType&gt;
+        std::enable_if_t&lt;std::is_unsigned&lt;OriginalType&gt;::value, UnsignedType&gt;
+            transposeToNaturalOrder(UnsignedType in) {
+            static_assert(
+                sizeof( OriginalType ) == sizeof( UnsignedType ),
+                "reordering requires the same sized types on both sides" );
+            static_assert( std::is_unsigned&lt;UnsignedType&gt;::value, "Input type must be unsigned" );
+            // No reordering is needed for unsigned -&gt; unsigned
+            return in;
+        }
+    } // namespace Detail
+} // namespace Catch
+
+#endif // CATCH_RANDOM_INTEGER_HELPERS_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

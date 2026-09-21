@@ -1,0 +1,249 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_interfaces_reporter.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_INTERFACES_REPORTER_HPP_INCLUDED
+#define CATCH_INTERFACES_REPORTER_HPP_INCLUDED
+
+#include &lt;catch2/catch_section_info.hpp&gt;
+#include &lt;catch2/catch_totals.hpp&gt;
+#include &lt;catch2/catch_assertion_result.hpp&gt;
+#include &lt;catch2/internal/catch_message_info.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+#include &lt;catch2/internal/catch_test_run_info.hpp&gt;
+#include &lt;catch2/internal/catch_unique_ptr.hpp&gt;
+#include &lt;catch2/benchmark/detail/catch_benchmark_stats.hpp&gt;
+
+#include &lt;map&gt;
+#include &lt;string&gt;
+#include &lt;vector&gt;
+#include &lt;iosfwd&gt;
+
+namespace Catch {
+
+    struct ReporterDescription;
+    struct ListenerDescription;
+    struct TagInfo;
+    struct TestCaseInfo;
+    class TestCaseHandle;
+    class IConfig;
+    class IStream;
+    enum class ColourMode : std::uint8_t;
+
+    struct ReporterConfig {
+        ReporterConfig( IConfig const* _fullConfig,
+                        Detail::unique_ptr&lt;IStream&gt; _stream,
+                        ColourMode colourMode,
+                        std::map&lt;std::string, std::string&gt; customOptions );
+
+        ReporterConfig( ReporterConfig&amp;&amp; ) = default;
+        ReporterConfig&amp; operator=( ReporterConfig&amp;&amp; ) = default;
+        ~ReporterConfig(); // = default
+
+        Detail::unique_ptr&lt;IStream&gt; takeStream() &amp;&amp;;
+        IConfig const* fullConfig() const;
+        ColourMode colourMode() const;
+        std::map&lt;std::string, std::string&gt; const&amp; customOptions() const;
+
+    private:
+        Detail::unique_ptr&lt;IStream&gt; m_stream;
+        IConfig const* m_fullConfig;
+        ColourMode m_colourMode;
+        std::map&lt;std::string, std::string&gt; m_customOptions;
+    };
+
+    struct AssertionStats {
+        AssertionStats( AssertionResult const&amp; _assertionResult,
+                        std::vector&lt;MessageInfo&gt; const&amp; _infoMessages,
+                        Totals const&amp; _totals );
+
+<span style = "background-color:#fdd">        AssertionStats( AssertionStats const&amp; )              = default;
+        AssertionStats( AssertionStats &amp;&amp; )                  = default;</span>
+        AssertionStats&amp; operator = ( AssertionStats const&amp; ) = delete;
+        AssertionStats&amp; operator = ( AssertionStats &amp;&amp; )     = delete;
+
+        AssertionResult assertionResult;
+        std::vector&lt;MessageInfo&gt; infoMessages;
+        Totals totals;
+    };
+
+    struct SectionStats {
+        SectionStats(   SectionInfo&amp;&amp; _sectionInfo,
+                        Counts const&amp; _assertions,
+                        double _durationInSeconds,
+                        bool _missingAssertions );
+
+        SectionInfo sectionInfo;
+        Counts assertions;
+        double durationInSeconds;
+        bool missingAssertions;
+    };
+
+    struct TestCaseStats {
+        TestCaseStats(  TestCaseInfo const&amp; _testInfo,
+                        Totals const&amp; _totals,
+                        std::string&amp;&amp; _stdOut,
+                        std::string&amp;&amp; _stdErr,
+                        bool _aborting );
+
+        TestCaseInfo const * testInfo;
+        Totals totals;
+        std::string stdOut;
+        std::string stdErr;
+        bool aborting;
+    };
+
+    struct TestRunStats {
+        TestRunStats(   TestRunInfo const&amp; _runInfo,
+                        Totals const&amp; _totals,
+                        bool _aborting );
+
+        TestRunInfo runInfo;
+        Totals totals;
+        bool aborting;
+    };
+
+    //! By setting up its preferences, a reporter can modify Catch2's behaviour
+    //! in some regards, e.g. it can request Catch2 to capture writes to
+    //! stdout/stderr during test execution, and pass them to the reporter.
+    struct ReporterPreferences {
+        //! Catch2 should redirect writes to stdout and pass them to the
+        //! reporter
+        bool shouldRedirectStdOut = false;
+        //! Catch2 should call `Reporter::assertionEnded` even for passing
+        //! assertions
+        bool shouldReportAllAssertions = false;
+    };
+
+    /**
+     * The common base for all reporters and event listeners
+     *
+     * Implementing classes must also implement:
+     *
+     *     //! User-friendly description of the reporter/listener type
+     *     static std::string getDescription()
+     *
+     * Generally shouldn't be derived from by users of Catch2 directly,
+     * instead they should derive from one of the utility bases that
+     * derive from this class.
+     */
+    class IEventListener {
+    protected:
+        //! Derived classes can set up their preferences here
+        ReporterPreferences m_preferences;
+        //! The test run's config as filled in from CLI and defaults
+        IConfig const* m_config;
+
+    public:
+<span style = "background-color:#dfd">        IEventListener( IConfig const* config ): m_config( config ) {}</span>
+
+        virtual ~IEventListener(); // = default;
+
+        // Implementing class must also provide the following static methods:
+        // static std::string getDescription();
+
+<span style = "background-color:#dfd">        ReporterPreferences const&amp; getPreferences() const {
+            return m_preferences;
+        }</span>
+
+        //! Called when no test cases match provided test spec
+        virtual void noMatchingTestCases( StringRef unmatchedSpec ) = 0;
+        //! Called for all invalid test specs from the cli
+        virtual void reportInvalidTestSpec( StringRef invalidArgument ) = 0;
+
+        /**
+         * Called once in a testing run before tests are started
+         *
+         * Not called if tests won't be run (e.g. only listing will happen)
+         */
+        virtual void testRunStarting( TestRunInfo const&amp; testRunInfo ) = 0;
+
+        //! Called _once_ for each TEST_CASE, no matter how many times it is entered
+        virtual void testCaseStarting( TestCaseInfo const&amp; testInfo ) = 0;
+        //! Called _every time_ a TEST_CASE is entered, including repeats (due to sections)
+        virtual void testCasePartialStarting( TestCaseInfo const&amp; testInfo, uint64_t partNumber ) = 0;
+        //! Called when a `SECTION` is being entered. Not called for skipped sections
+        virtual void sectionStarting( SectionInfo const&amp; sectionInfo ) = 0;
+
+        //! Called when user-code is being probed before the actual benchmark runs
+        virtual void benchmarkPreparing( StringRef benchmarkName ) = 0;
+        //! Called after probe but before the user-code is being benchmarked
+        virtual void benchmarkStarting( BenchmarkInfo const&amp; benchmarkInfo ) = 0;
+        //! Called with the benchmark results if benchmark successfully finishes
+        virtual void benchmarkEnded( BenchmarkStats&lt;&gt; const&amp; benchmarkStats ) = 0;
+        //! Called if running the benchmarks fails for any reason
+        virtual void benchmarkFailed( StringRef benchmarkName ) = 0;
+
+        //! Called before assertion success/failure is evaluated
+        virtual void assertionStarting( AssertionInfo const&amp; assertionInfo ) = 0;
+
+        //! Called after assertion was fully evaluated
+        virtual void assertionEnded( AssertionStats const&amp; assertionStats ) = 0;
+
+        //! Called after a `SECTION` has finished running
+        virtual void sectionEnded( SectionStats const&amp; sectionStats ) = 0;
+        //! Called _every time_ a TEST_CASE is entered, including repeats (due to sections)
+        virtual void testCasePartialEnded(TestCaseStats const&amp; testCaseStats, uint64_t partNumber ) = 0;
+        //! Called _once_ for each TEST_CASE, no matter how many times it is entered
+        virtual void testCaseEnded( TestCaseStats const&amp; testCaseStats ) = 0;
+        /**
+         * Called once after all tests in a testing run are finished
+         *
+         * Not called if tests weren't run (e.g. only listings happened)
+         */
+        virtual void testRunEnded( TestRunStats const&amp; testRunStats ) = 0;
+
+        /**
+         * Called with test cases that are skipped due to the test run aborting.
+         * NOT called for test cases that are explicitly skipped using the `SKIP` macro.
+         *
+         * Deprecated - will be removed in the next major release.
+         */
+        virtual void skipTest( TestCaseInfo const&amp; testInfo ) = 0;
+
+        //! Called if a fatal error (signal/structured exception) occurred
+        virtual void fatalErrorEncountered( StringRef error ) = 0;
+
+        //! Writes out information about provided reporters using reporter-specific format
+        virtual void listReporters(std::vector&lt;ReporterDescription&gt; const&amp; descriptions) = 0;
+        //! Writes out the provided listeners descriptions using reporter-specific format
+        virtual void listListeners(std::vector&lt;ListenerDescription&gt; const&amp; descriptions) = 0;
+        //! Writes out information about provided tests using reporter-specific format
+        virtual void listTests(std::vector&lt;TestCaseHandle&gt; const&amp; tests) = 0;
+        //! Writes out information about the provided tags using reporter-specific format
+        virtual void listTags(std::vector&lt;TagInfo&gt; const&amp; tags) = 0;
+    };
+    using IEventListenerPtr = Detail::unique_ptr&lt;IEventListener&gt;;
+
+} // end namespace Catch
+
+#endif // CATCH_INTERFACES_REPORTER_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

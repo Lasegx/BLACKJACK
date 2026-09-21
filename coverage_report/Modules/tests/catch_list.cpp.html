@@ -1,0 +1,146 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_list.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/internal/catch_list.hpp&gt;
+
+#include &lt;catch2/interfaces/catch_interfaces_registry_hub.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_reporter.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_reporter_factory.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_registry_impl.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_case_insensitive_comparisons.hpp&gt;
+#include &lt;catch2/catch_config.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+
+namespace Catch {
+    namespace {
+
+<span style = "background-color:#fdd">        void listTests(IEventListener&amp; reporter, IConfig const&amp; config) {
+            auto const&amp; testSpec = config.testSpec();
+            auto matchedTestCases = filterTests(getAllTestCasesSorted(config), testSpec, config);
+            reporter.listTests(matchedTestCases);
+        }</span>
+
+<span style = "background-color:#fdd">        void listTags(IEventListener&amp; reporter, IConfig const&amp; config) {
+            auto const&amp; testSpec = config.testSpec();
+            std::vector&lt;TestCaseHandle&gt; matchedTestCases = filterTests(getAllTestCasesSorted(config), testSpec, config);</span>
+
+<span style = "background-color:#fdd">            std::map&lt;StringRef, TagInfo, Detail::CaseInsensitiveLess&gt; tagCounts;
+            for (auto const&amp; testCase : matchedTestCases) {
+                for (auto const&amp; tagName : testCase.getTestCaseInfo().tags) {
+                    auto it = tagCounts.find(tagName.original);
+                    if (it == tagCounts.end())
+                        it = tagCounts.insert(std::make_pair(tagName.original, TagInfo())).first;
+                    it-&gt;second.add(tagName.original);
+                }
+            }</span>
+
+<span style = "background-color:#fdd">            std::vector&lt;TagInfo&gt; infos; infos.reserve(tagCounts.size());
+            for (auto&amp; tagc : tagCounts) {
+                infos.push_back(CATCH_MOVE(tagc.second));
+            }</span>
+
+<span style = "background-color:#fdd">            reporter.listTags(infos);
+        }</span>
+
+<span style = "background-color:#fdd">        void listReporters(IEventListener&amp; reporter) {
+            std::vector&lt;ReporterDescription&gt; descriptions;</span>
+
+<span style = "background-color:#fdd">            auto const&amp; factories = getRegistryHub().getReporterRegistry().getFactories();
+            descriptions.reserve(factories.size());
+            for (auto const&amp; fac : factories) {
+                descriptions.push_back({ fac.first, fac.second-&gt;getDescription() });
+            }</span>
+
+<span style = "background-color:#fdd">            reporter.listReporters(descriptions);
+        }</span>
+
+<span style = "background-color:#fdd">        void listListeners(IEventListener&amp; reporter) {
+            std::vector&lt;ListenerDescription&gt; descriptions;</span>
+
+<span style = "background-color:#fdd">            auto const&amp; factories =</span>
+                getRegistryHub().getReporterRegistry().getListeners();
+<span style = "background-color:#fdd">            descriptions.reserve( factories.size() );
+            for ( auto const&amp; fac : factories ) {
+                descriptions.push_back( { fac-&gt;getName(), fac-&gt;getDescription() } );
+            }</span>
+
+<span style = "background-color:#fdd">            reporter.listListeners( descriptions );
+        }</span>
+
+    } // end anonymous namespace
+
+<span style = "background-color:#fdd">    void TagInfo::add( StringRef spelling ) {
+        ++count;
+        spellings.insert( spelling );
+    }</span>
+
+<span style = "background-color:#fdd">    std::string TagInfo::all() const {</span>
+        // 2 per tag for brackets '[' and ']'
+<span style = "background-color:#fdd">        size_t size =  spellings.size() * 2;
+        for (auto const&amp; spelling : spellings) {
+            size += spelling.size();
+        }</span>
+
+<span style = "background-color:#fdd">        std::string out; out.reserve(size);
+        for (auto const&amp; spelling : spellings) {
+            out += '[';
+            out += spelling;
+            out += ']';
+        }
+        return out;
+    }</span>
+
+<span style = "background-color:#dfd">    bool list( IEventListener&amp; reporter, Config const&amp; config ) {
+        bool listed = false;
+        if (config.listTests()) {</span>
+<span style = "background-color:#fdd">            listed = true;
+            listTests(reporter, config);</span>
+        }
+<span style = "background-color:#dfd">        if (config.listTags()) {</span>
+<span style = "background-color:#fdd">            listed = true;
+            listTags(reporter, config);</span>
+        }
+<span style = "background-color:#dfd">        if (config.listReporters()) {</span>
+<span style = "background-color:#fdd">            listed = true;
+            listReporters(reporter);</span>
+        }
+<span style = "background-color:#dfd">        if ( config.listListeners() ) {</span>
+<span style = "background-color:#fdd">            listed = true;
+            listListeners( reporter );</span>
+        }
+<span style = "background-color:#dfd">        return listed;
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

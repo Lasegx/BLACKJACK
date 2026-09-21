@@ -20,6 +20,41 @@ TEST_CASE("startRound kaster exception ved indsat på 0 eller mindre") {
 }
 
 TEST_CASE("Push giver indsatsen tilbage til balancen") {
+	std::vector<Card> cards = {
+		{Rank::King, Suit::Diamonds },
+		{Rank::King, Suit::Spades },
+		{Rank::King, Suit::Clubs },
+		{Rank::King, Suit::Hearts }
 
+	};
 
+	Game game(100);
+	game.startRound(10, Deck(cards));
+
+	REQUIRE(game.getPlayerValue() == 20);
+	REQUIRE(game.getDealerValue() == 20);
+
+	game.playerStand();
+
+	REQUIRE(game.getBalance() == 100);
+}
+
+TEST_CASE("playerHit resulterer i PlayBust ved værdi over 21") {
+	std::vector<Card> cards = {
+		{ Rank::King, Suit::Diamonds },
+		{ Rank::Three, Suit::Clubs },
+		{ Rank::Five, Suit::Hearts },
+		{ Rank::Two, Suit::Spades },
+		{ Rank::Ten, Suit::Hearts }
+	};
+	
+	Game game(100);
+	game.startRound(10, Deck(cards));
+
+	REQUIRE(game.getPlayerValue() == 15);
+
+	GameResult result = game.playerHit();
+
+	REQUIRE(result == GameResult::PlayerBust);
+	REQUIRE(game.isOver());
 }

@@ -1,0 +1,146 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_jsonwriter.hpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#ifndef CATCH_JSONWRITER_HPP_INCLUDED
+#define CATCH_JSONWRITER_HPP_INCLUDED
+
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_stringref.hpp&gt;
+
+#include &lt;cstdint&gt;
+#include &lt;sstream&gt;
+
+namespace Catch {
+    class JsonObjectWriter;
+    class JsonArrayWriter;
+
+    struct JsonUtils {
+        static void indent( std::ostream&amp; os, std::uint64_t level );
+        static void appendCommaNewline( std::ostream&amp; os,
+                                        bool&amp; should_comma,
+                                        std::uint64_t level );
+    };
+
+    class JsonValueWriter {
+    public:
+        JsonValueWriter( std::ostream&amp; os );
+        JsonValueWriter( std::ostream&amp; os, std::uint64_t indent_level );
+
+        JsonObjectWriter writeObject() &amp;&amp;;
+        JsonArrayWriter writeArray() &amp;&amp;;
+
+        template &lt;typename T&gt;
+<span style = "background-color:#fdd">        void write( T const&amp; value ) &amp;&amp; {
+            writeImpl( value, !std::is_arithmetic&lt;T&gt;::value );
+        }</span>
+        void write( StringRef value ) &amp;&amp;;
+        void write( bool value ) &amp;&amp;;
+
+    private:
+        void writeImpl( StringRef value, bool quote );
+
+        // Without this SFINAE, this overload is a better match
+        // for `std::string`, `char const*`, `char const[N]` args.
+        // While it would still work, it would cause code bloat
+        // and multiple iteration over the strings
+        template &lt;typename T,
+                  typename = typename std::enable_if_t&lt;
+                      !std::is_convertible&lt;T, StringRef&gt;::value&gt;&gt;
+<span style = "background-color:#fdd">        void writeImpl( T const&amp; value, bool quote_value ) {
+            m_sstream &lt;&lt; value;
+            writeImpl( m_sstream.str(), quote_value );
+        }</span>
+
+        std::ostream&amp; m_os;
+        std::stringstream m_sstream;
+        std::uint64_t m_indent_level;
+    };
+
+    class JsonObjectWriter {
+    public:
+        JsonObjectWriter( std::ostream&amp; os );
+        JsonObjectWriter( std::ostream&amp; os, std::uint64_t indent_level );
+
+        JsonObjectWriter( JsonObjectWriter&amp;&amp; source );
+        JsonObjectWriter&amp; operator=( JsonObjectWriter&amp;&amp; source ) = delete;
+
+        ~JsonObjectWriter();
+
+        JsonValueWriter write( StringRef key );
+
+    private:
+        std::ostream&amp; m_os;
+        std::uint64_t m_indent_level;
+<span style = "background-color:#fdd">        bool m_should_comma = false;
+        bool m_active = true;</span>
+    };
+
+    class JsonArrayWriter {
+    public:
+        JsonArrayWriter( std::ostream&amp; os );
+        JsonArrayWriter( std::ostream&amp; os, std::uint64_t indent_level );
+
+        JsonArrayWriter( JsonArrayWriter&amp;&amp; source );
+        JsonArrayWriter&amp; operator=( JsonArrayWriter&amp;&amp; source ) = delete;
+
+        ~JsonArrayWriter();
+
+        JsonObjectWriter writeObject();
+        JsonArrayWriter writeArray();
+
+        template &lt;typename T&gt;
+<span style = "background-color:#fdd">        JsonArrayWriter&amp; write( T const&amp; value ) {
+            return writeImpl( value );
+        }</span>
+
+        JsonArrayWriter&amp; write( bool value );
+
+    private:
+        template &lt;typename T&gt;
+<span style = "background-color:#fdd">        JsonArrayWriter&amp; writeImpl( T const&amp; value ) {
+            JsonUtils::appendCommaNewline(</span>
+                m_os, m_should_comma, m_indent_level + 1 );
+<span style = "background-color:#fdd">            JsonValueWriter{ m_os }.write( value );</span>
+
+<span style = "background-color:#fdd">            return *this;
+        }</span>
+
+        std::ostream&amp; m_os;
+        std::uint64_t m_indent_level;
+<span style = "background-color:#fdd">        bool m_should_comma = false;
+        bool m_active = true;</span>
+    };
+
+} // namespace Catch
+
+#endif // CATCH_JSONWRITER_HPP_INCLUDED</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

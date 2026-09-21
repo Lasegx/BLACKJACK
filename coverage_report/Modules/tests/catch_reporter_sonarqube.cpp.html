@@ -1,0 +1,188 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_sonarqube.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/reporters/catch_reporter_sonarqube.hpp&gt;
+
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/catch_test_spec.hpp&gt;
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+
+#include &lt;map&gt;
+
+namespace Catch {
+
+    namespace {
+<span style = "background-color:#fdd">        std::string createMetadataString(IConfig const&amp; config) {
+            ReusableStringStream sstr;
+            if ( config.testSpec().hasFilters() ) {
+                sstr &lt;&lt; "filters='"</span>
+                         &lt;&lt; config.testSpec()
+                         &lt;&lt; "' ";
+            }
+<span style = "background-color:#fdd">            sstr &lt;&lt; "rng-seed=" &lt;&lt; config.rngSeed();
+            return sstr.str();
+        }</span>
+    }
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::testRunStarting(TestRunInfo const&amp; testRunInfo) {
+        CumulativeReporterBase::testRunStarting(testRunInfo);</span>
+
+<span style = "background-color:#fdd">        xml.writeComment( createMetadataString( *m_config ) );
+        xml.startElement("testExecutions");
+        xml.writeAttribute("version"_sr, '1');
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeRun( TestRunNode const&amp; runNode ) {
+        std::map&lt;StringRef, std::vector&lt;TestCaseNode const*&gt;&gt; testsPerFile;</span>
+
+<span style = "background-color:#fdd">        for ( auto const&amp; child : runNode.children ) {
+            testsPerFile[child-&gt;value.testInfo-&gt;lineInfo.file].push_back(</span>
+                child.get() );
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        for ( auto const&amp; kv : testsPerFile ) {
+            writeTestFile( kv.first, kv.second );
+        }
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeTestFile(StringRef filename, std::vector&lt;TestCaseNode const*&gt; const&amp; testCaseNodes) {
+        XmlWriter::ScopedElement e = xml.scopedElement("file");
+        xml.writeAttribute("path"_sr, filename);</span>
+
+<span style = "background-color:#fdd">        for (auto const&amp; child : testCaseNodes)
+            writeTestCase(*child);
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeTestCase(TestCaseNode const&amp; testCaseNode) {</span>
+        // All test cases have exactly one section - which represents the
+        // test case itself. That section may have 0-n nested sections
+<span style = "background-color:#fdd">        assert(testCaseNode.children.size() == 1);
+        SectionNode const&amp; rootSection = *testCaseNode.children.front();
+        writeSection("", rootSection, testCaseNode.value.testInfo-&gt;okToFail());
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeSection(std::string const&amp; rootName, SectionNode const&amp; sectionNode, bool okToFail) {
+        std::string name = trim(sectionNode.stats.sectionInfo.name);
+        if (!rootName.empty())
+            name = rootName + '/' + name;</span>
+
+        if ( sectionNode.hasAnyAssertions()
+            || !sectionNode.stdOut.empty()
+<span style = "background-color:#fdd">            ||  !sectionNode.stdErr.empty() ) {
+            XmlWriter::ScopedElement e = xml.scopedElement("testCase");
+            xml.writeAttribute("name"_sr, name);
+            xml.writeAttribute("duration"_sr, static_cast&lt;long&gt;(sectionNode.stats.durationInSeconds * 1000));</span>
+
+<span style = "background-color:#fdd">            writeAssertions(sectionNode, okToFail);
+        }</span>
+
+<span style = "background-color:#fdd">        for (auto const&amp; childNode : sectionNode.childSections)
+            writeSection(name, *childNode, okToFail);
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeAssertions(SectionNode const&amp; sectionNode, bool okToFail) {
+        for (auto const&amp; assertionOrBenchmark : sectionNode.assertionsAndBenchmarks) {
+            if (assertionOrBenchmark.isAssertion()) {
+                writeAssertion(assertionOrBenchmark.asAssertion(), okToFail);</span>
+            }
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    void SonarQubeReporter::writeAssertion(AssertionStats const&amp; stats, bool okToFail) {
+        AssertionResult const&amp; result = stats.assertionResult;
+        if ( !result.isOk() ||</span>
+             result.getResultType() == ResultWas::ExplicitSkip ) {
+<span style = "background-color:#fdd">            std::string elementName;
+            if (okToFail) {
+                elementName = "skipped";
+            } else {
+                switch (result.getResultType()) {</span>
+                case ResultWas::ThrewException:
+                case ResultWas::FatalErrorCondition:
+<span style = "background-color:#fdd">                    elementName = "error";
+                    break;</span>
+                case ResultWas::ExplicitFailure:
+                case ResultWas::ExpressionFailed:
+                case ResultWas::DidntThrowException:
+<span style = "background-color:#fdd">                    elementName = "failure";
+                    break;</span>
+                case ResultWas::ExplicitSkip:
+<span style = "background-color:#fdd">                    elementName = "skipped";
+                    break;</span>
+                    // We should never see these here:
+                case ResultWas::Info:
+                case ResultWas::Warning:
+                case ResultWas::Ok:
+                case ResultWas::Unknown:
+                case ResultWas::FailureBit:
+                case ResultWas::Exception:
+<span style = "background-color:#fdd">                    elementName = "internalError";</span>
+                    break;
+                }
+            }
+
+<span style = "background-color:#fdd">            XmlWriter::ScopedElement e = xml.scopedElement(elementName);</span>
+
+<span style = "background-color:#fdd">            ReusableStringStream messageRss;
+            messageRss &lt;&lt; result.getTestMacroName() &lt;&lt; '(' &lt;&lt; result.getExpression() &lt;&lt; ')';
+            xml.writeAttribute("message"_sr, messageRss.str());</span>
+
+<span style = "background-color:#fdd">            ReusableStringStream textRss;
+            if ( result.getResultType() == ResultWas::ExplicitSkip ) {
+                textRss &lt;&lt; "SKIPPED\n";
+            } else {
+                textRss &lt;&lt; "FAILED:\n";
+                if (result.hasExpression()) {
+                    textRss &lt;&lt; '\t' &lt;&lt; result.getExpressionInMacro() &lt;&lt; '\n';</span>
+                }
+<span style = "background-color:#fdd">                if (result.hasExpandedExpression()) {
+                    textRss &lt;&lt; "with expansion:\n\t" &lt;&lt; result.getExpandedExpression() &lt;&lt; '\n';</span>
+                }
+            }
+
+<span style = "background-color:#fdd">            if (result.hasMessage())
+                textRss &lt;&lt; result.getMessage() &lt;&lt; '\n';</span>
+
+<span style = "background-color:#fdd">            for (auto const&amp; msg : stats.infoMessages)
+                if (msg.type == ResultWas::Info)
+                    textRss &lt;&lt; msg.message &lt;&lt; '\n';</span>
+
+<span style = "background-color:#fdd">            textRss &lt;&lt; "at " &lt;&lt; result.getSourceInfo();
+            xml.writeText(textRss.str(), XmlFormatting::Newline);
+        }
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

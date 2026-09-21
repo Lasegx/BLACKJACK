@@ -1,0 +1,490 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_clara.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/internal/catch_clara.hpp&gt;
+#include &lt;catch2/internal/catch_console_width.hpp&gt;
+#include &lt;catch2/internal/catch_platform.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;ostream&gt;
+
+namespace {
+<span style = "background-color:#fdd">    bool isOptPrefix( char c ) {
+        return c == '-'</span>
+#ifdef CATCH_PLATFORM_WINDOWS
+               || c == '/'
+#endif
+            ;
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    Catch::StringRef normaliseOpt( Catch::StringRef optName ) {</span>
+        if ( optName[0] == '-'
+#if defined(CATCH_PLATFORM_WINDOWS)
+<span style = "background-color:#fdd">             || optName[0] == '/'</span>
+#endif
+        ) {
+<span style = "background-color:#fdd">            return optName.substr( 1, optName.size() );</span>
+        }
+
+<span style = "background-color:#fdd">        return optName;
+    }</span>
+
+<span style = "background-color:#fdd">    static size_t find_first_separator(Catch::StringRef sr) {
+        auto is_separator = []( char c ) {
+            return c == ' ' || c == ':' || c == '=';
+        };
+        size_t pos = 0;
+        while (pos &lt; sr.size()) {
+            if (is_separator(sr[pos])) { return pos; }
+            ++pos;
+        }</span>
+
+<span style = "background-color:#fdd">        return Catch::StringRef::npos;
+    }</span>
+
+} // namespace
+
+namespace Catch {
+    namespace Clara {
+        namespace Detail {
+
+<span style = "background-color:#dfd">            void TokenStream::loadBuffer() {
+                m_tokenBuffer.clear();</span>
+
+                // Skip any empty strings
+<span style = "background-color:#dfd">                while ( it != itEnd &amp;&amp; it-&gt;empty() ) {</span>
+<span style = "background-color:#fdd">                    ++it;
+                }</span>
+
+<span style = "background-color:#dfd">                if ( it != itEnd ) {</span>
+<span style = "background-color:#fdd">                    StringRef next = *it;
+                    if ( isOptPrefix( next[0] ) ) {
+                        auto delimiterPos = find_first_separator(next);
+                        if ( delimiterPos != StringRef::npos ) {
+                            m_tokenBuffer.push_back(</span>
+                                { TokenType::Option,
+                                  next.substr( 0, delimiterPos ) } );
+<span style = "background-color:#fdd">                            m_tokenBuffer.push_back(</span>
+                                { TokenType::Argument,
+                                  next.substr( delimiterPos + 1, next.size() ) } );
+<span style = "background-color:#fdd">                        } else {
+                            if ( next[1] != '-' &amp;&amp; next.size() &gt; 2 ) {</span>
+                                // Combined short args, e.g. "-ab" for "-a -b"
+<span style = "background-color:#fdd">                                for ( size_t i = 1; i &lt; next.size(); ++i ) {
+                                    m_tokenBuffer.push_back(</span>
+                                        { TokenType::Option,
+                                          next.substr( i, 1 ) } );
+<span style = "background-color:#fdd">                                }
+                            } else {
+                                m_tokenBuffer.push_back(</span>
+                                    { TokenType::Option, next } );
+                            }
+                        }
+<span style = "background-color:#fdd">                    } else {
+                        m_tokenBuffer.push_back(</span>
+                            { TokenType::Argument, next } );
+                    }
+                }
+<span style = "background-color:#dfd">            }</span>
+
+            TokenStream::TokenStream( Args const&amp; args ):
+<span style = "background-color:#dfd">                TokenStream( args.m_args.begin(), args.m_args.end() ) {}</span>
+
+            TokenStream::TokenStream( Iterator it_, Iterator itEnd_ ):
+<span style = "background-color:#dfd">                it( it_ ), itEnd( itEnd_ ) {
+                loadBuffer();
+            }</span>
+
+<span style = "background-color:#fdd">            TokenStream&amp; TokenStream::operator++() {
+                if ( m_tokenBuffer.size() &gt;= 2 ) {
+                    m_tokenBuffer.erase( m_tokenBuffer.begin() );
+                } else {
+                    if ( it != itEnd )
+                        ++it;
+                    loadBuffer();</span>
+                }
+<span style = "background-color:#fdd">                return *this;
+            }</span>
+
+            ParserResult convertInto( std::string const&amp; source,
+<span style = "background-color:#dfd">                                      std::string&amp; target ) {
+                target = source;
+                return ParserResult::ok( ParseResultType::Matched );
+            }</span>
+
+            ParserResult convertInto( std::string const&amp; source,
+<span style = "background-color:#fdd">                                      bool&amp; target ) {
+                std::string srcLC = toLower( source );</span>
+
+                if ( srcLC == "y" || srcLC == "1" || srcLC == "true" ||
+<span style = "background-color:#fdd">                     srcLC == "yes" || srcLC == "on" ) {
+                    target = true;
+                } else if ( srcLC == "n" || srcLC == "0" || srcLC == "false" ||
+                            srcLC == "no" || srcLC == "off" ) {
+                    target = false;
+                } else {
+                    return ParserResult::runtimeError(</span>
+                        "Expected a boolean value but did not recognise: '" +
+                        source + '\'' );
+                }
+<span style = "background-color:#fdd">                return ParserResult::ok( ParseResultType::Matched );
+            }</span>
+
+<span style = "background-color:#fdd">            size_t ParserBase::cardinality() const { return 1; }</span>
+
+<span style = "background-color:#dfd">            InternalParseResult ParserBase::parse( Args const&amp; args ) const {
+                return parse( static_cast&lt;std::string&gt;(args.exeName()), TokenStream( args ) );
+            }</span>
+
+            ParseState::ParseState( ParseResultType type,
+                                    TokenStream remainingTokens ):
+<span style = "background-color:#dfd">                m_type( type ), m_remainingTokens( CATCH_MOVE(remainingTokens) ) {}</span>
+
+<span style = "background-color:#fdd">            ParserResult BoundFlagRef::setFlag( bool flag ) {
+                m_ref = flag;
+                return ParserResult::ok( ParseResultType::Matched );
+            }</span>
+
+<span style = "background-color:#dfd">            ResultBase::~ResultBase() = default;</span>
+
+<span style = "background-color:#fdd">            bool BoundRef::isContainer() const { return false; }</span>
+
+<span style = "background-color:#fdd">            bool BoundRef::isFlag() const { return false; }</span>
+
+<span style = "background-color:#fdd">            bool BoundFlagRefBase::isFlag() const { return true; }</span>
+
+} // namespace Detail
+
+        Detail::InternalParseResult Arg::parse(std::string const&amp;,
+<span style = "background-color:#fdd">                                               Detail::TokenStream tokens) const {
+            auto validationResult = validate();
+            if (!validationResult)
+                return Detail::InternalParseResult(validationResult);</span>
+
+<span style = "background-color:#fdd">            auto token = *tokens;
+            if (token.type != Detail::TokenType::Argument)
+                return Detail::InternalParseResult::ok(Detail::ParseState(</span>
+                    ParseResultType::NoMatch, CATCH_MOVE(tokens)));
+
+<span style = "background-color:#fdd">            assert(!m_ref-&gt;isFlag());
+            auto valueRef =</span>
+                static_cast&lt;Detail::BoundValueRefBase*&gt;(m_ref.get());
+
+<span style = "background-color:#fdd">            auto result = valueRef-&gt;setValue(static_cast&lt;std::string&gt;(token.token));
+            if ( !result )
+                return Detail::InternalParseResult( result );</span>
+            else
+<span style = "background-color:#fdd">                return Detail::InternalParseResult::ok(</span>
+                    Detail::ParseState( ParseResultType::Matched,
+                                        CATCH_MOVE( ++tokens ) ) );
+<span style = "background-color:#fdd">        }</span>
+
+        Opt::Opt(bool&amp; ref) :
+<span style = "background-color:#dfd">            ParserRefImpl(std::make_shared&lt;Detail::BoundFlagRef&gt;(ref)) {}</span>
+
+<span style = "background-color:#fdd">        Detail::HelpColumns Opt::getHelpColumns() const {
+            ReusableStringStream oss;
+            bool first = true;
+            for (auto const&amp; opt : m_optNames) {
+                if (first)
+                    first = false;</span>
+                else
+<span style = "background-color:#fdd">                    oss &lt;&lt; ", ";
+                oss &lt;&lt; opt;
+            }
+            if (!m_hint.empty())
+                oss &lt;&lt; " &lt;" &lt;&lt; m_hint &lt;&lt; '&gt;';
+            return { oss.str(), m_description };
+        }</span>
+
+<span style = "background-color:#fdd">        bool Opt::isMatch(StringRef optToken) const {
+            auto normalisedToken = normaliseOpt(optToken);
+            for (auto const&amp; name : m_optNames) {
+                if (normaliseOpt(name) == normalisedToken)
+                    return true;
+            }
+            return false;
+        }</span>
+
+        Detail::InternalParseResult Opt::parse(std::string const&amp;,
+<span style = "background-color:#fdd">                                       Detail::TokenStream tokens) const {
+            auto validationResult = validate();
+            if (!validationResult)
+                return Detail::InternalParseResult(validationResult);</span>
+
+<span style = "background-color:#fdd">            if (tokens &amp;&amp;</span>
+                tokens-&gt;type == Detail::TokenType::Option) {
+<span style = "background-color:#fdd">                auto const&amp; token = *tokens;
+                if (isMatch(token.token)) {
+                    if (m_ref-&gt;isFlag()) {
+                        auto flagRef =</span>
+                            static_cast&lt;Detail::BoundFlagRefBase*&gt;(
+                                m_ref.get());
+<span style = "background-color:#fdd">                        auto result = flagRef-&gt;setFlag(true);
+                        if (!result)
+                            return Detail::InternalParseResult(result);
+                        if (result.value() ==</span>
+                            ParseResultType::ShortCircuitAll)
+<span style = "background-color:#fdd">                            return Detail::InternalParseResult::ok(Detail::ParseState(</span>
+                                result.value(), CATCH_MOVE(tokens)));
+<span style = "background-color:#fdd">                    } else {
+                        auto valueRef =</span>
+                            static_cast&lt;Detail::BoundValueRefBase*&gt;(
+                                m_ref.get());
+<span style = "background-color:#fdd">                        ++tokens;
+                        if (!tokens)
+                            return Detail::InternalParseResult::runtimeError(</span>
+                                "Expected argument following " +
+                                token.token);
+<span style = "background-color:#fdd">                        auto const&amp; argToken = *tokens;
+                        if (argToken.type != Detail::TokenType::Argument)
+                            return Detail::InternalParseResult::runtimeError(</span>
+                                "Expected argument following " +
+                                token.token);
+<span style = "background-color:#fdd">                        const auto result = valueRef-&gt;setValue(static_cast&lt;std::string&gt;(argToken.token));
+                        if (!result)
+                            return Detail::InternalParseResult(result);
+                        if (result.value() ==</span>
+                            ParseResultType::ShortCircuitAll)
+<span style = "background-color:#fdd">                            return Detail::InternalParseResult::ok(Detail::ParseState(</span>
+                                result.value(), CATCH_MOVE(tokens)));
+<span style = "background-color:#fdd">                    }
+                    return Detail::InternalParseResult::ok(Detail::ParseState(</span>
+                        ParseResultType::Matched, CATCH_MOVE(++tokens)));
+                }
+            }
+<span style = "background-color:#fdd">            return Detail::InternalParseResult::ok(</span>
+                Detail::ParseState(ParseResultType::NoMatch, CATCH_MOVE(tokens)));
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        Detail::Result Opt::validate() const {
+            if (m_optNames.empty())
+                return Detail::Result::logicError("No options supplied to Opt");
+            for (auto const&amp; name : m_optNames) {
+                if (name.empty())
+                    return Detail::Result::logicError(</span>
+                        "Option name cannot be empty");
+#ifdef CATCH_PLATFORM_WINDOWS
+<span style = "background-color:#fdd">                if (name[0] != '-' &amp;&amp; name[0] != '/')
+                    return Detail::Result::logicError(</span>
+                        "Option name must begin with '-' or '/'");
+#else
+                if (name[0] != '-')
+                    return Detail::Result::logicError(
+                        "Option name must begin with '-'");
+#endif
+<span style = "background-color:#fdd">            }
+            return ParserRefImpl::validate();
+        }</span>
+
+        ExeName::ExeName() :
+<span style = "background-color:#dfd">            m_name(std::make_shared&lt;std::string&gt;("&lt;executable&gt;")) {}</span>
+
+<span style = "background-color:#dfd">        ExeName::ExeName(std::string&amp; ref) : ExeName() {
+            m_ref = std::make_shared&lt;Detail::BoundValueRef&lt;std::string&gt;&gt;(ref);
+        }</span>
+
+        Detail::InternalParseResult
+            ExeName::parse(std::string const&amp;,
+<span style = "background-color:#fdd">                           Detail::TokenStream tokens) const {
+            return Detail::InternalParseResult::ok(</span>
+                Detail::ParseState(ParseResultType::NoMatch, CATCH_MOVE(tokens)));
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#dfd">        ParserResult ExeName::set(std::string const&amp; newName) {
+            auto lastSlash = newName.find_last_of("\\/");
+            auto filename = (lastSlash == std::string::npos)</span>
+                ? newName
+                : newName.substr(lastSlash + 1);
+
+<span style = "background-color:#dfd">            *m_name = filename;
+            if (m_ref)
+                return m_ref-&gt;setValue(filename);</span>
+            else
+<span style = "background-color:#fdd">                return ParserResult::ok(ParseResultType::Matched);
+        }</span>
+
+
+
+
+<span style = "background-color:#fdd">        Parser&amp; Parser::operator|=( Parser const&amp; other ) {
+            m_options.insert( m_options.end(),</span>
+                              other.m_options.begin(),
+                              other.m_options.end() );
+<span style = "background-color:#fdd">            m_args.insert(</span>
+                m_args.end(), other.m_args.begin(), other.m_args.end() );
+<span style = "background-color:#fdd">            return *this;
+        }</span>
+
+<span style = "background-color:#fdd">        std::vector&lt;Detail::HelpColumns&gt; Parser::getHelpColumns() const {
+            std::vector&lt;Detail::HelpColumns&gt; cols;
+            cols.reserve( m_options.size() );
+            for ( auto const&amp; o : m_options ) {
+                cols.push_back(o.getHelpColumns());
+            }
+            return cols;
+        }</span>
+
+<span style = "background-color:#fdd">        void Parser::writeToStream( std::ostream&amp; os ) const {
+            if ( !m_exeName.name().empty() ) {
+                os &lt;&lt; "usage:\n"</span>
+                   &lt;&lt; "  " &lt;&lt; m_exeName.name() &lt;&lt; ' ';
+<span style = "background-color:#fdd">                bool required = true, first = true;
+                for ( auto const&amp; arg : m_args ) {
+                    if ( first )
+                        first = false;</span>
+                    else
+<span style = "background-color:#fdd">                        os &lt;&lt; ' ';
+                    if ( arg.isOptional() &amp;&amp; required ) {
+                        os &lt;&lt; '[';
+                        required = false;</span>
+                    }
+<span style = "background-color:#fdd">                    os &lt;&lt; '&lt;' &lt;&lt; arg.hint() &lt;&lt; '&gt;';
+                    if ( arg.cardinality() == 0 )
+                        os &lt;&lt; " ... ";
+                }
+                if ( !required )
+                    os &lt;&lt; ']';
+                if ( !m_options.empty() )
+                    os &lt;&lt; " options";
+                os &lt;&lt; "\n\nwhere options are:\n";</span>
+            }
+
+<span style = "background-color:#fdd">            auto rows = getHelpColumns();
+            size_t consoleWidth = CATCH_CONFIG_CONSOLE_WIDTH;
+            size_t optWidth = 0;
+            for ( auto const&amp; cols : rows )
+                optWidth = ( std::max )( optWidth, cols.left.size() + 2 );</span>
+
+<span style = "background-color:#fdd">            optWidth = ( std::min )( optWidth, consoleWidth / 2 );</span>
+
+<span style = "background-color:#fdd">            for ( auto&amp; cols : rows ) {
+                auto row = TextFlow::Column( CATCH_MOVE(cols.left) )</span>
+                               .width( optWidth )
+                               .indent( 2 ) +
+                           TextFlow::Spacer( 4 ) +
+                           TextFlow::Column( static_cast&lt;std::string&gt;(cols.descriptions) )
+                               .width( consoleWidth - 7 - optWidth );
+<span style = "background-color:#fdd">                os &lt;&lt; row &lt;&lt; '\n';
+            }
+        }</span>
+
+<span style = "background-color:#fdd">        Detail::Result Parser::validate() const {
+            for ( auto const&amp; opt : m_options ) {
+                auto result = opt.validate();
+                if ( !result )
+                    return result;
+            }
+            for ( auto const&amp; arg : m_args ) {
+                auto result = arg.validate();
+                if ( !result )
+                    return result;
+            }
+            return Detail::Result::ok();
+        }</span>
+
+        Detail::InternalParseResult
+        Parser::parse( std::string const&amp; exeName,
+<span style = "background-color:#dfd">                       Detail::TokenStream tokens ) const {</span>
+
+            struct ParserInfo {
+                ParserBase const* parser = nullptr;
+                size_t count = 0;
+            };
+<span style = "background-color:#dfd">            std::vector&lt;ParserInfo&gt; parseInfos;
+            parseInfos.reserve( m_options.size() + m_args.size() );
+            for ( auto const&amp; opt : m_options ) {
+                parseInfos.push_back( { &amp;opt, 0 } );
+            }
+            for ( auto const&amp; arg : m_args ) {
+                parseInfos.push_back( { &amp;arg, 0 } );
+            }</span>
+
+<span style = "background-color:#dfd">            m_exeName.set( exeName );</span>
+
+<span style = "background-color:#dfd">            auto result = Detail::InternalParseResult::ok(</span>
+                Detail::ParseState( ParseResultType::NoMatch, CATCH_MOVE(tokens) ) );
+<span style = "background-color:#dfd">            while ( result.value().remainingTokens() ) {</span>
+<span style = "background-color:#fdd">                bool tokenParsed = false;</span>
+
+<span style = "background-color:#fdd">                for ( auto&amp; parseInfo : parseInfos ) {
+                    if ( parseInfo.parser-&gt;cardinality() == 0 ||</span>
+                         parseInfo.count &lt; parseInfo.parser-&gt;cardinality() ) {
+<span style = "background-color:#fdd">                        result = parseInfo.parser-&gt;parse(</span>
+                            exeName, CATCH_MOVE(result).value().remainingTokens() );
+<span style = "background-color:#fdd">                        if ( !result )
+                            return result;
+                        if ( result.value().type() !=</span>
+                             ParseResultType::NoMatch ) {
+<span style = "background-color:#fdd">                            tokenParsed = true;
+                            ++parseInfo.count;
+                            break;</span>
+                        }
+                    }
+<span style = "background-color:#fdd">                }</span>
+
+<span style = "background-color:#fdd">                if ( result.value().type() == ParseResultType::ShortCircuitAll )
+                    return result;
+                if ( !tokenParsed )
+                    return Detail::InternalParseResult::runtimeError(</span>
+                        "Unrecognised token: " +
+                        result.value().remainingTokens()-&gt;token );
+<span style = "background-color:#fdd">            }</span>
+            // !TBD Check missing required options
+<span style = "background-color:#dfd">            return result;
+        }</span>
+
+        Args::Args(int argc, char const* const* argv) :
+<span style = "background-color:#dfd">            m_exeName(argv[0]), m_args(argv + 1, argv + argc) {}</span>
+
+        Args::Args(std::initializer_list&lt;StringRef&gt; args) :
+<span style = "background-color:#fdd">            m_exeName(*args.begin()),
+            m_args(args.begin() + 1, args.end()) {}</span>
+
+
+        Help::Help( bool&amp; showHelpFlag ):
+<span style = "background-color:#dfd">            Opt( [&amp;]( bool flag ) {</span>
+<span style = "background-color:#fdd">                showHelpFlag = flag;
+                return ParserResult::ok( ParseResultType::ShortCircuitAll );</span>
+<span style = "background-color:#dfd">            } ) {
+            static_cast&lt;Opt&amp;&gt; ( *this )(</span>
+                "display usage information" )["-?"]["-h"]["--help"]
+                .optional();
+<span style = "background-color:#dfd">        }</span>
+
+    } // namespace Clara
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

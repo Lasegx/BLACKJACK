@@ -1,0 +1,199 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_spec_parser.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/internal/catch_reporter_spec_parser.hpp&gt;
+
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+
+#include &lt;algorithm&gt;
+
+namespace Catch {
+
+    namespace {
+        struct kvPair {
+            StringRef key, value;
+        };
+
+<span style = "background-color:#fdd">        kvPair splitKVPair(StringRef kvString) {
+            auto splitPos = static_cast&lt;size_t&gt;(</span>
+                std::find( kvString.begin(), kvString.end(), '=' ) -
+                kvString.begin() );
+
+<span style = "background-color:#fdd">            return { kvString.substr( 0, splitPos ),</span>
+                     kvString.substr( splitPos + 1, kvString.size() ) };
+<span style = "background-color:#fdd">        }</span>
+    }
+
+    namespace Detail {
+<span style = "background-color:#fdd">        std::vector&lt;std::string&gt; splitReporterSpec( StringRef reporterSpec ) {</span>
+            static constexpr auto separator = "::";
+            static constexpr size_t separatorSize = 2;
+
+<span style = "background-color:#fdd">            size_t separatorPos = 0;</span>
+            auto findNextSeparator = [&amp;reporterSpec]( size_t startPos ) {
+                static_assert(
+                    separatorSize == 2,
+                    "The code below currently assumes 2 char separator" );
+
+<span style = "background-color:#fdd">                auto currentPos = startPos;</span>
+                do {
+<span style = "background-color:#fdd">                    while ( currentPos &lt; reporterSpec.size() &amp;&amp;</span>
+                            reporterSpec[currentPos] != separator[0] ) {
+<span style = "background-color:#fdd">                        ++currentPos;
+                    }
+                    if ( currentPos + 1 &lt; reporterSpec.size() &amp;&amp;</span>
+                         reporterSpec[currentPos + 1] == separator[1] ) {
+<span style = "background-color:#fdd">                        return currentPos;</span>
+                    }
+<span style = "background-color:#fdd">                    ++currentPos;
+                } while ( currentPos &lt; reporterSpec.size() );</span>
+
+<span style = "background-color:#fdd">                return static_cast&lt;size_t&gt;( -1 );
+            };</span>
+
+<span style = "background-color:#fdd">            std::vector&lt;std::string&gt; parts;</span>
+
+<span style = "background-color:#fdd">            while ( separatorPos &lt; reporterSpec.size() ) {
+                const auto nextSeparator = findNextSeparator( separatorPos );
+                parts.push_back( static_cast&lt;std::string&gt;( reporterSpec.substr(</span>
+                    separatorPos, nextSeparator - separatorPos ) ) );
+
+<span style = "background-color:#fdd">                if ( nextSeparator == static_cast&lt;size_t&gt;( -1 ) ) {
+                    break;</span>
+                }
+<span style = "background-color:#fdd">                separatorPos = nextSeparator + separatorSize;
+            }</span>
+
+            // Handle a separator at the end.
+            // This is not a valid spec, but we want to do validation in a
+            // centralized place
+<span style = "background-color:#fdd">            if ( separatorPos == reporterSpec.size() ) {
+                parts.emplace_back();</span>
+            }
+
+<span style = "background-color:#fdd">            return parts;
+        }</span>
+
+<span style = "background-color:#fdd">        Optional&lt;ColourMode&gt; stringToColourMode( StringRef colourMode ) {
+            if ( colourMode == "default" ) {
+                return ColourMode::PlatformDefault;
+            } else if ( colourMode == "ansi" ) {
+                return ColourMode::ANSI;
+            } else if ( colourMode == "win32" ) {
+                return ColourMode::Win32;
+            } else if ( colourMode == "none" ) {
+                return ColourMode::None;
+            } else {
+                return {};</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+    } // namespace Detail
+
+
+<span style = "background-color:#fdd">    bool operator==( ReporterSpec const&amp; lhs, ReporterSpec const&amp; rhs ) {
+        return lhs.m_name == rhs.m_name &amp;&amp;</span>
+               lhs.m_outputFileName == rhs.m_outputFileName &amp;&amp;
+               lhs.m_colourMode == rhs.m_colourMode &amp;&amp;
+               lhs.m_customOptions == rhs.m_customOptions;
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    Optional&lt;ReporterSpec&gt; parseReporterSpec( StringRef reporterSpec ) {
+        auto parts = Detail::splitReporterSpec( reporterSpec );</span>
+
+<span style = "background-color:#fdd">        assert( parts.size() &gt; 0 &amp;&amp; "Split should never return empty vector" );</span>
+
+<span style = "background-color:#fdd">        std::map&lt;std::string, std::string&gt; kvPairs;
+        Optional&lt;std::string&gt; outputFileName;
+        Optional&lt;ColourMode&gt; colourMode;</span>
+
+        // First part is always reporter name, so we skip it
+<span style = "background-color:#fdd">        for ( size_t i = 1; i &lt; parts.size(); ++i ) {
+            auto kv = splitKVPair( parts[i] );
+            auto key = kv.key, value = kv.value;</span>
+
+<span style = "background-color:#fdd">            if ( key.empty() || value.empty() ) {
+                return {};
+            } else if ( key[0] == 'X' ) {</span>
+                // This is a reporter-specific option, we don't check these
+                // apart from basic sanity checks
+<span style = "background-color:#fdd">                if ( key.size() == 1 ) {
+                    return {};</span>
+                }
+
+<span style = "background-color:#fdd">                auto ret = kvPairs.emplace( std::string(kv.key), std::string(kv.value) );
+                if ( !ret.second ) {</span>
+                    // Duplicated key. We might want to handle this differently,
+                    // e.g. by overwriting the existing value?
+<span style = "background-color:#fdd">                    return {};</span>
+                }
+<span style = "background-color:#fdd">            } else if ( key == "out" ) {</span>
+                // Duplicated key
+<span style = "background-color:#fdd">                if ( outputFileName ) {
+                    return {};</span>
+                }
+<span style = "background-color:#fdd">                outputFileName = static_cast&lt;std::string&gt;( value );
+            } else if ( key == "colour-mode" ) {</span>
+                // Duplicated key
+<span style = "background-color:#fdd">                if ( colourMode ) {
+                    return {};</span>
+                }
+<span style = "background-color:#fdd">                colourMode = Detail::stringToColourMode( value );</span>
+                // Parsing failed
+<span style = "background-color:#fdd">                if ( !colourMode ) {
+                    return {};</span>
+                }
+<span style = "background-color:#fdd">            } else {</span>
+                // Unrecognized option
+<span style = "background-color:#fdd">                return {};</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        return ReporterSpec{ CATCH_MOVE( parts[0] ),</span>
+                             CATCH_MOVE( outputFileName ),
+                             CATCH_MOVE( colourMode ),
+                             CATCH_MOVE( kvPairs ) };
+<span style = "background-color:#fdd">    }</span>
+
+ReporterSpec::ReporterSpec(
+        std::string name,
+        Optional&lt;std::string&gt; outputFileName,
+        Optional&lt;ColourMode&gt; colourMode,
+        std::map&lt;std::string, std::string&gt; customOptions ):
+<span style = "background-color:#dfd">        m_name( CATCH_MOVE( name ) ),
+        m_outputFileName( CATCH_MOVE( outputFileName ) ),
+        m_colourMode( CATCH_MOVE( colourMode ) ),
+        m_customOptions( CATCH_MOVE( customOptions ) ) {}</span>
+
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,290 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_test_case_info.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_case_insensitive_comparisons.hpp&gt;
+#include &lt;catch2/internal/catch_test_registry.hpp&gt;
+
+#include &lt;cassert&gt;
+#include &lt;cctype&gt;
+#include &lt;algorithm&gt;
+
+namespace Catch {
+
+    namespace {
+        using TCP_underlying_type = uint8_t;
+        static_assert(sizeof(TestCaseProperties) == sizeof(TCP_underlying_type),
+                      "The size of the TestCaseProperties is different from the assumed size");
+
+<span style = "background-color:#fdd">        TestCaseProperties operator|(TestCaseProperties lhs, TestCaseProperties rhs) {
+            return static_cast&lt;TestCaseProperties&gt;(</span>
+                static_cast&lt;TCP_underlying_type&gt;(lhs) | static_cast&lt;TCP_underlying_type&gt;(rhs)
+            );
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        TestCaseProperties&amp; operator|=(TestCaseProperties&amp; lhs, TestCaseProperties rhs) {
+            lhs = static_cast&lt;TestCaseProperties&gt;(</span>
+                static_cast&lt;TCP_underlying_type&gt;(lhs) | static_cast&lt;TCP_underlying_type&gt;(rhs)
+            );
+<span style = "background-color:#fdd">            return lhs;
+        }</span>
+
+<span style = "background-color:#dfd">        TestCaseProperties operator&amp;(TestCaseProperties lhs, TestCaseProperties rhs) {
+            return static_cast&lt;TestCaseProperties&gt;(</span>
+                static_cast&lt;TCP_underlying_type&gt;(lhs) &amp; static_cast&lt;TCP_underlying_type&gt;(rhs)
+            );
+<span style = "background-color:#dfd">        }</span>
+
+<span style = "background-color:#dfd">        bool applies(TestCaseProperties tcp) {</span>
+            static_assert(static_cast&lt;TCP_underlying_type&gt;(TestCaseProperties::None) == 0,
+                          "TestCaseProperties::None must be equal to 0");
+<span style = "background-color:#dfd">            return tcp != TestCaseProperties::None;
+        }</span>
+
+<span style = "background-color:#fdd">        TestCaseProperties parseSpecialTag( StringRef tag ) {
+            if( !tag.empty() &amp;&amp; tag[0] == '.' )
+                return TestCaseProperties::IsHidden;
+            else if( tag == "!throws"_sr )
+                return TestCaseProperties::Throws;
+            else if( tag == "!shouldfail"_sr )
+                return TestCaseProperties::ShouldFail;
+            else if( tag == "!mayfail"_sr )
+                return TestCaseProperties::MayFail;
+            else if( tag == "!nonportable"_sr )
+                return TestCaseProperties::NonPortable;
+            else if( tag == "!benchmark"_sr )
+                return TestCaseProperties::Benchmark | TestCaseProperties::IsHidden;</span>
+            else
+<span style = "background-color:#fdd">                return TestCaseProperties::None;
+        }
+        bool isReservedTag( StringRef tag ) {
+            return parseSpecialTag( tag ) == TestCaseProperties::None</span>
+                &amp;&amp; tag.size() &gt; 0
+                &amp;&amp; !std::isalnum( static_cast&lt;unsigned char&gt;(tag[0]) );
+<span style = "background-color:#fdd">        }
+        void enforceNotReservedTag( StringRef tag, SourceLineInfo const&amp; _lineInfo ) {
+            CATCH_ENFORCE( !isReservedTag(tag),</span>
+                          "Tag name: [" &lt;&lt; tag &lt;&lt; "] is not allowed.\n"
+                          &lt;&lt; "Tag names starting with non alphanumeric characters are reserved\n"
+                          &lt;&lt; _lineInfo );
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        std::string makeDefaultName() {</span>
+            static size_t counter = 0;
+<span style = "background-color:#fdd">            return "Anonymous test case " + std::to_string(++counter);
+        }</span>
+
+<span style = "background-color:#dfd">        StringRef extractFilenamePart(StringRef filename) {
+            size_t lastDot = filename.size();
+            while (lastDot &gt; 0 &amp;&amp; filename[lastDot - 1] != '.') {
+                --lastDot;
+            }
+            --lastDot;</span>
+
+<span style = "background-color:#dfd">            size_t nameStart = lastDot;
+            while (nameStart &gt; 0 &amp;&amp; filename[nameStart - 1] != '/' &amp;&amp; filename[nameStart - 1] != '\\') {
+                --nameStart;
+            }</span>
+
+<span style = "background-color:#dfd">            return filename.substr(nameStart, lastDot - nameStart);
+        }</span>
+
+        // Returns the upper bound on size of extra tags ([#file]+[.])
+<span style = "background-color:#dfd">        size_t sizeOfExtraTags(StringRef filepath) {</span>
+            // [.] is 3, [#] is another 3
+<span style = "background-color:#dfd">            const size_t extras = 3 + 3;
+            return extractFilenamePart(filepath).size() + extras;
+        }</span>
+    } // end unnamed namespace
+
+<span style = "background-color:#fdd">    bool operator&lt;(  Tag const&amp; lhs, Tag const&amp; rhs ) {</span>
+        Detail::CaseInsensitiveLess cmp;
+<span style = "background-color:#fdd">        return cmp( lhs.original, rhs.original );
+    }
+    bool operator==( Tag const&amp; lhs, Tag const&amp; rhs ) {</span>
+        Detail::CaseInsensitiveEqualTo cmp;
+<span style = "background-color:#fdd">        return cmp( lhs.original, rhs.original );
+    }</span>
+
+    Detail::unique_ptr&lt;TestCaseInfo&gt;
+        makeTestCaseInfo(StringRef _className,
+                         NameAndTags const&amp; nameAndTags,
+<span style = "background-color:#dfd">                         SourceLineInfo const&amp; _lineInfo ) {
+        return Detail::make_unique&lt;TestCaseInfo&gt;(_className, nameAndTags, _lineInfo);
+    }</span>
+
+    TestCaseInfo::TestCaseInfo(StringRef _className,
+                               NameAndTags const&amp; _nameAndTags,
+                               SourceLineInfo const&amp; _lineInfo):
+<span style = "background-color:#dfd">        name( _nameAndTags.name.empty() ? makeDefaultName() : _nameAndTags.name ),
+        className( _className ),
+        lineInfo( _lineInfo )
+    {
+        StringRef originalTags = _nameAndTags.tags;</span>
+        // We need to reserve enough space to store all of the tags
+        // (including optional hidden tag and filename tag)
+<span style = "background-color:#dfd">        auto requiredSize = originalTags.size() + sizeOfExtraTags(_lineInfo.file);
+        backingTags.reserve(requiredSize);</span>
+
+        // We cannot copy the tags directly, as we need to normalize
+        // some tags, so that [.foo] is copied as [.][foo].
+<span style = "background-color:#dfd">        size_t tagStart = 0;
+        size_t tagEnd = 0;
+        bool inTag = false;
+        for (size_t idx = 0; idx &lt; originalTags.size(); ++idx) {</span>
+<span style = "background-color:#fdd">            auto c = originalTags[idx];
+            if (c == '[') {
+                CATCH_ENFORCE(</span>
+                    !inTag,
+                    "Found '[' inside a tag while registering test case '"
+                        &lt;&lt; _nameAndTags.name &lt;&lt; "' at " &lt;&lt; _lineInfo );
+
+<span style = "background-color:#fdd">                inTag = true;
+                tagStart = idx;</span>
+            }
+<span style = "background-color:#fdd">            if (c == ']') {
+                CATCH_ENFORCE(</span>
+                    inTag,
+                    "Found unmatched ']' while registering test case '"
+                        &lt;&lt; _nameAndTags.name &lt;&lt; "' at " &lt;&lt; _lineInfo );
+
+<span style = "background-color:#fdd">                inTag = false;
+                tagEnd = idx;
+                assert(tagStart &lt; tagEnd);</span>
+
+                // We need to check the tag for special meanings, copy
+                // it over to backing storage and actually reference the
+                // backing storage in the saved tags
+<span style = "background-color:#fdd">                StringRef tagStr = originalTags.substr(tagStart+1, tagEnd - tagStart - 1);
+                CATCH_ENFORCE( !tagStr.empty(),</span>
+                               "Found an empty tag while registering test case '"
+                                   &lt;&lt; _nameAndTags.name &lt;&lt; "' at "
+                                   &lt;&lt; _lineInfo );
+
+<span style = "background-color:#fdd">                enforceNotReservedTag(tagStr, lineInfo);
+                properties |= parseSpecialTag(tagStr);</span>
+                // When copying a tag to the backing storage, we need to
+                // check if it is a merged hide tag, such as [.foo], and
+                // if it is, we need to handle it as if it was [foo].
+<span style = "background-color:#fdd">                if (tagStr.size() &gt; 1 &amp;&amp; tagStr[0] == '.') {
+                    tagStr = tagStr.substr(1, tagStr.size() - 1);</span>
+                }
+                // We skip over dealing with the [.] tag, as we will add
+                // it later unconditionally and then sort and unique all
+                // the tags.
+<span style = "background-color:#fdd">                internalAppendTag(tagStr);</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+<span style = "background-color:#dfd">        CATCH_ENFORCE( !inTag,</span>
+                       "Found an unclosed tag while registering test case '"
+                           &lt;&lt; _nameAndTags.name &lt;&lt; "' at " &lt;&lt; _lineInfo );
+
+
+        // Add [.] if relevant
+<span style = "background-color:#dfd">        if (isHidden()) {</span>
+<span style = "background-color:#fdd">            internalAppendTag("."_sr);</span>
+        }
+
+        // Sort and prepare tags
+<span style = "background-color:#dfd">        std::sort(begin(tags), end(tags));
+        tags.erase(std::unique(begin(tags), end(tags)),</span>
+                   end(tags));
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    bool TestCaseInfo::isHidden() const {
+        return applies( properties &amp; TestCaseProperties::IsHidden );
+    }</span>
+<span style = "background-color:#fdd">    bool TestCaseInfo::throws() const {
+        return applies( properties &amp; TestCaseProperties::Throws );
+    }
+    bool TestCaseInfo::okToFail() const {
+        return applies( properties &amp; (TestCaseProperties::ShouldFail | TestCaseProperties::MayFail ) );
+    }</span>
+<span style = "background-color:#dfd">    bool TestCaseInfo::expectedToFail() const {
+        return applies( properties &amp; (TestCaseProperties::ShouldFail) );
+    }</span>
+
+<span style = "background-color:#fdd">    void TestCaseInfo::addFilenameTag() {
+        std::string combined("#");
+        combined += extractFilenamePart(lineInfo.file);
+        internalAppendTag(combined);
+    }</span>
+
+<span style = "background-color:#fdd">    std::string TestCaseInfo::tagsAsString() const {
+        std::string ret;</span>
+        // '[' and ']' per tag
+<span style = "background-color:#fdd">        std::size_t full_size = 2 * tags.size();
+        for (const auto&amp; tag : tags) {
+            full_size += tag.original.size();
+        }
+        ret.reserve(full_size);
+        for (const auto&amp; tag : tags) {
+            ret.push_back('[');
+            ret += tag.original;
+            ret.push_back(']');
+        }</span>
+
+<span style = "background-color:#fdd">        return ret;
+    }</span>
+
+<span style = "background-color:#fdd">    void TestCaseInfo::internalAppendTag(StringRef tagStr) {
+        backingTags += '[';
+        const auto backingStart = backingTags.size();
+        backingTags += tagStr;
+        const auto backingEnd = backingTags.size();
+        backingTags += ']';
+        tags.emplace_back(StringRef(backingTags.c_str() + backingStart, backingEnd - backingStart));
+    }</span>
+
+<span style = "background-color:#dfd">    bool operator&lt;( TestCaseInfo const&amp; lhs, TestCaseInfo const&amp; rhs ) {</span>
+        // We want to avoid redoing the string comparisons multiple times,
+        // so we store the result of a three-way comparison before using
+        // it in the actual comparison logic.
+<span style = "background-color:#dfd">        const auto cmpName = lhs.name.compare( rhs.name );
+        if ( cmpName != 0 ) {
+            return cmpName &lt; 0;</span>
+        }
+<span style = "background-color:#fdd">        const auto cmpClassName = lhs.className.compare( rhs.className );
+        if ( cmpClassName != 0 ) {
+            return cmpClassName &lt; 0;</span>
+        }
+<span style = "background-color:#fdd">        return lhs.tags &lt; rhs.tags;</span>
+<span style = "background-color:#dfd">    }</span>
+
+<span style = "background-color:#dfd">    TestCaseInfo const&amp; TestCaseHandle::getTestCaseInfo() const {
+        return *m_info;
+    }</span>
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

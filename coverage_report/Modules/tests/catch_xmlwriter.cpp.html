@@ -1,0 +1,374 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_xmlwriter.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+// Note: swapping these two includes around causes MSVC to error out
+//       while in /permissive- mode. No, I don't know why.
+//       Tested on VS 2019, 18.{3, 4}.x
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_xmlwriter.hpp&gt;
+
+#include &lt;cstdint&gt;
+#include &lt;iomanip&gt;
+#include &lt;type_traits&gt;
+
+namespace Catch {
+
+namespace {
+
+<span style = "background-color:#fdd">    size_t trailingBytes(unsigned char c) {
+        if ((c &amp; 0xE0) == 0xC0) {
+            return 2;</span>
+        }
+<span style = "background-color:#fdd">        if ((c &amp; 0xF0) == 0xE0) {
+            return 3;</span>
+        }
+<span style = "background-color:#fdd">        if ((c &amp; 0xF8) == 0xF0) {
+            return 4;</span>
+        }
+<span style = "background-color:#fdd">        CATCH_INTERNAL_ERROR("Invalid multibyte utf-8 start byte encountered");
+    }</span>
+
+<span style = "background-color:#fdd">    uint32_t headerValue(unsigned char c) {
+        if ((c &amp; 0xE0) == 0xC0) {
+            return c &amp; 0x1F;</span>
+        }
+<span style = "background-color:#fdd">        if ((c &amp; 0xF0) == 0xE0) {
+            return c &amp; 0x0F;</span>
+        }
+<span style = "background-color:#fdd">        if ((c &amp; 0xF8) == 0xF0) {
+            return c &amp; 0x07;</span>
+        }
+<span style = "background-color:#fdd">        CATCH_INTERNAL_ERROR("Invalid multibyte utf-8 start byte encountered");
+    }</span>
+
+<span style = "background-color:#fdd">    void hexEscapeChar(std::ostream&amp; os, unsigned char c) {
+        std::ios_base::fmtflags f(os.flags());
+        os &lt;&lt; "\\x"</span>
+            &lt;&lt; std::uppercase &lt;&lt; std::hex &lt;&lt; std::setfill('0') &lt;&lt; std::setw(2)
+            &lt;&lt; static_cast&lt;int&gt;(c);
+<span style = "background-color:#fdd">        os.flags(f);
+    }</span>
+
+<span style = "background-color:#fdd">    bool shouldNewline(XmlFormatting fmt) {
+        return !!(static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(fmt &amp; XmlFormatting::Newline));
+    }</span>
+
+<span style = "background-color:#fdd">    bool shouldIndent(XmlFormatting fmt) {
+        return !!(static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(fmt &amp; XmlFormatting::Indent));
+    }</span>
+
+} // anonymous namespace
+
+<span style = "background-color:#fdd">    XmlFormatting operator | (XmlFormatting lhs, XmlFormatting rhs) {
+        return static_cast&lt;XmlFormatting&gt;(</span>
+            static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(lhs) |
+            static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(rhs)
+        );
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    XmlFormatting operator &amp; (XmlFormatting lhs, XmlFormatting rhs) {
+        return static_cast&lt;XmlFormatting&gt;(</span>
+            static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(lhs) &amp;
+            static_cast&lt;std::underlying_type_t&lt;XmlFormatting&gt;&gt;(rhs)
+        );
+<span style = "background-color:#fdd">    }</span>
+
+
+    XmlEncode::XmlEncode( StringRef str, ForWhat forWhat )
+<span style = "background-color:#fdd">    :   m_str( str ),
+        m_forWhat( forWhat )
+    {}</span>
+
+<span style = "background-color:#fdd">    void XmlEncode::encodeTo( std::ostream&amp; os ) const {</span>
+        // Apostrophe escaping not necessary if we always use " to write attributes
+        // (see: http://www.w3.org/TR/xml/#syntax)
+
+<span style = "background-color:#fdd">        for( std::size_t idx = 0; idx &lt; m_str.size(); ++ idx ) {
+            unsigned char c = static_cast&lt;unsigned char&gt;(m_str[idx]);
+            switch (c) {
+            case '&lt;':   os &lt;&lt; "&amp;lt;"; break;
+            case '&amp;':   os &lt;&lt; "&amp;amp;"; break;</span>
+
+            case '&gt;':
+                // See: http://www.w3.org/TR/xml/#syntax
+<span style = "background-color:#fdd">                if (idx &gt; 2 &amp;&amp; m_str[idx - 1] == ']' &amp;&amp; m_str[idx - 2] == ']')
+                    os &lt;&lt; "&amp;gt;";</span>
+                else
+<span style = "background-color:#fdd">                    os &lt;&lt; c;
+                break;</span>
+
+            case '\"':
+<span style = "background-color:#fdd">                if (m_forWhat == ForAttributes)
+                    os &lt;&lt; "&amp;quot;";</span>
+                else
+<span style = "background-color:#fdd">                    os &lt;&lt; c;
+                break;</span>
+
+            default:
+                // Check for control characters and invalid utf-8
+
+                // Escape control characters in standard ascii
+                // see http://stackoverflow.com/questions/404107/why-are-control-characters-illegal-in-xml-1-0
+<span style = "background-color:#fdd">                if (c &lt; 0x09 || (c &gt; 0x0D &amp;&amp; c &lt; 0x20) || c == 0x7F) {
+                    hexEscapeChar(os, c);
+                    break;</span>
+                }
+
+                // Plain ASCII: Write it to stream
+<span style = "background-color:#fdd">                if (c &lt; 0x7F) {
+                    os &lt;&lt; c;
+                    break;</span>
+                }
+
+                // UTF-8 territory
+                // Check if the encoding is valid and if it is not, hex escape bytes.
+                // Important: We do not check the exact decoded values for validity, only the encoding format
+                // First check that this bytes is a valid lead byte:
+                // This means that it is not encoded as 1111 1XXX
+                // Or as 10XX XXXX
+<span style = "background-color:#fdd">                if (c &lt;  0xC0 ||</span>
+                    c &gt;= 0xF8) {
+<span style = "background-color:#fdd">                    hexEscapeChar(os, c);
+                    break;</span>
+                }
+
+<span style = "background-color:#fdd">                auto encBytes = trailingBytes(c);</span>
+                // Are there enough bytes left to avoid accessing out-of-bounds memory?
+<span style = "background-color:#fdd">                if (idx + encBytes - 1 &gt;= m_str.size()) {
+                    hexEscapeChar(os, c);
+                    break;</span>
+                }
+                // The header is valid, check data
+                // The next encBytes bytes must together be a valid utf-8
+                // This means: bitpattern 10XX XXXX and the extracted value is sane (ish)
+<span style = "background-color:#fdd">                bool valid = true;
+                uint32_t value = headerValue(c);
+                for (std::size_t n = 1; n &lt; encBytes; ++n) {
+                    unsigned char nc = static_cast&lt;unsigned char&gt;(m_str[idx + n]);
+                    valid &amp;= ((nc &amp; 0xC0) == 0x80);
+                    value = (value &lt;&lt; 6) | (nc &amp; 0x3F);
+                }</span>
+
+                if (
+                    // Wrong bit pattern of following bytes
+                    (!valid) ||
+                    // Overlong encodings
+                    (value &lt; 0x80) ||
+                    (0x80 &lt;= value &amp;&amp; value &lt; 0x800   &amp;&amp; encBytes &gt; 2) ||
+<span style = "background-color:#fdd">                    (0x800 &lt; value &amp;&amp; value &lt; 0x10000 &amp;&amp; encBytes &gt; 3) ||</span>
+                    // Encoded value out of range
+                    (value &gt;= 0x110000)
+                    ) {
+<span style = "background-color:#fdd">                    hexEscapeChar(os, c);
+                    break;</span>
+                }
+
+                // If we got here, this is in fact a valid(ish) utf-8 sequence
+<span style = "background-color:#fdd">                for (std::size_t n = 0; n &lt; encBytes; ++n) {
+                    os &lt;&lt; m_str[idx + n];
+                }
+                idx += encBytes - 1;</span>
+                break;
+            }
+<span style = "background-color:#fdd">        }
+    }</span>
+
+<span style = "background-color:#fdd">    std::ostream&amp; operator &lt;&lt; ( std::ostream&amp; os, XmlEncode const&amp; xmlEncode ) {
+        xmlEncode.encodeTo( os );
+        return os;
+    }</span>
+
+    XmlWriter::ScopedElement::ScopedElement( XmlWriter* writer, XmlFormatting fmt )
+<span style = "background-color:#fdd">    :   m_writer( writer ),
+        m_fmt(fmt)
+    {}</span>
+
+    XmlWriter::ScopedElement::ScopedElement( ScopedElement&amp;&amp; other ) noexcept
+<span style = "background-color:#fdd">    :   m_writer( other.m_writer ),
+        m_fmt(other.m_fmt)
+    {
+        other.m_writer = nullptr;
+        other.m_fmt = XmlFormatting::None;
+    }
+    XmlWriter::ScopedElement&amp; XmlWriter::ScopedElement::operator=( ScopedElement&amp;&amp; other ) noexcept {
+        if ( m_writer ) {
+            m_writer-&gt;endElement();</span>
+        }
+<span style = "background-color:#fdd">        m_writer = other.m_writer;
+        other.m_writer = nullptr;
+        m_fmt = other.m_fmt;
+        other.m_fmt = XmlFormatting::None;
+        return *this;
+    }</span>
+
+
+<span style = "background-color:#fdd">    XmlWriter::ScopedElement::~ScopedElement() {
+        if (m_writer) {
+            m_writer-&gt;endElement(m_fmt);</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+    XmlWriter::ScopedElement&amp;
+<span style = "background-color:#fdd">    XmlWriter::ScopedElement::writeText( StringRef text, XmlFormatting fmt ) {
+        m_writer-&gt;writeText( text, fmt );
+        return *this;
+    }</span>
+
+    XmlWriter::ScopedElement&amp;
+    XmlWriter::ScopedElement::writeAttribute( StringRef name,
+<span style = "background-color:#fdd">                                              StringRef attribute ) {
+        m_writer-&gt;writeAttribute( name, attribute );
+        return *this;
+    }</span>
+
+
+<span style = "background-color:#fdd">    XmlWriter::XmlWriter( std::ostream&amp; os ) : m_os( os )
+    {
+        writeDeclaration();
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter::~XmlWriter() {
+        while (!m_tags.empty()) {
+            endElement();
+        }
+        newlineIfNecessary();
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter&amp; XmlWriter::startElement( std::string const&amp; name, XmlFormatting fmt ) {
+        ensureTagClosed();
+        newlineIfNecessary();
+        if (shouldIndent(fmt)) {
+            m_os &lt;&lt; m_indent;
+            m_indent += "  ";</span>
+        }
+<span style = "background-color:#fdd">        m_os &lt;&lt; '&lt;' &lt;&lt; name;
+        m_tags.push_back( name );
+        m_tagIsOpen = true;
+        applyFormatting(fmt);
+        return *this;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter::ScopedElement XmlWriter::scopedElement( std::string const&amp; name, XmlFormatting fmt ) {
+        ScopedElement scoped( this, fmt );
+        startElement( name, fmt );
+        return scoped;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter&amp; XmlWriter::endElement(XmlFormatting fmt) {
+        m_indent = m_indent.substr(0, m_indent.size() - 2);</span>
+
+<span style = "background-color:#fdd">        if( m_tagIsOpen ) {
+            m_os &lt;&lt; "/&gt;";
+            m_tagIsOpen = false;
+        } else {
+            newlineIfNecessary();
+            if (shouldIndent(fmt)) {
+                m_os &lt;&lt; m_indent;</span>
+            }
+<span style = "background-color:#fdd">            m_os &lt;&lt; "&lt;/" &lt;&lt; m_tags.back() &lt;&lt; '&gt;';</span>
+        }
+<span style = "background-color:#fdd">        m_os &lt;&lt; std::flush;
+        applyFormatting(fmt);
+        m_tags.pop_back();
+        return *this;
+    }</span>
+
+    XmlWriter&amp; XmlWriter::writeAttribute( StringRef name,
+<span style = "background-color:#fdd">                                          StringRef attribute ) {
+        if( !name.empty() &amp;&amp; !attribute.empty() )
+            m_os &lt;&lt; ' ' &lt;&lt; name &lt;&lt; "=\"" &lt;&lt; XmlEncode( attribute, XmlEncode::ForAttributes ) &lt;&lt; '"';
+        return *this;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter&amp; XmlWriter::writeAttribute( StringRef name, bool attribute ) {
+        writeAttribute(name, (attribute ? "true"_sr : "false"_sr));
+        return *this;
+    }</span>
+
+    XmlWriter&amp; XmlWriter::writeAttribute( StringRef name,
+<span style = "background-color:#fdd">                                          char const* attribute ) {
+        writeAttribute( name, StringRef( attribute ) );
+        return *this;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter&amp; XmlWriter::writeText( StringRef text, XmlFormatting fmt ) {
+        CATCH_ENFORCE(!m_tags.empty(), "Cannot write text as top level element");
+        if( !text.empty() ){
+            bool tagWasOpen = m_tagIsOpen;
+            ensureTagClosed();
+            if (tagWasOpen &amp;&amp; shouldIndent(fmt)) {
+                m_os &lt;&lt; m_indent;</span>
+            }
+<span style = "background-color:#fdd">            m_os &lt;&lt; XmlEncode( text, XmlEncode::ForTextNodes );
+            applyFormatting(fmt);</span>
+        }
+<span style = "background-color:#fdd">        return *this;
+    }</span>
+
+<span style = "background-color:#fdd">    XmlWriter&amp; XmlWriter::writeComment( StringRef text, XmlFormatting fmt ) {
+        ensureTagClosed();
+        if (shouldIndent(fmt)) {
+            m_os &lt;&lt; m_indent;</span>
+        }
+<span style = "background-color:#fdd">        m_os &lt;&lt; "&lt;!-- " &lt;&lt; text &lt;&lt; " --&gt;";
+        applyFormatting(fmt);
+        return *this;
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlWriter::writeStylesheetRef( StringRef url ) {
+        m_os &lt;&lt; R"(&lt;?xml-stylesheet type="text/xsl" href=")" &lt;&lt; url &lt;&lt; R"("?&gt;)" &lt;&lt; '\n';
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlWriter::ensureTagClosed() {
+        if( m_tagIsOpen ) {
+            m_os &lt;&lt; '&gt;' &lt;&lt; std::flush;
+            newlineIfNecessary();
+            m_tagIsOpen = false;</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+
+<span style = "background-color:#fdd">    void XmlWriter::applyFormatting(XmlFormatting fmt) {
+        m_needsNewline = shouldNewline(fmt);
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlWriter::writeDeclaration() {
+        m_os &lt;&lt; R"(&lt;?xml version="1.0" encoding="UTF-8"?&gt;)" &lt;&lt; '\n';
+    }</span>
+
+<span style = "background-color:#fdd">    void XmlWriter::newlineIfNecessary() {
+        if( m_needsNewline ) {
+            m_os &lt;&lt; '\n' &lt;&lt; std::flush;
+            m_needsNewline = false;</span>
+        }
+<span style = "background-color:#fdd">    }</span>
+}</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

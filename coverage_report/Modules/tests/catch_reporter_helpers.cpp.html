@@ -1,0 +1,369 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_reporter_helpers.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+
+#include &lt;catch2/reporters/catch_reporter_helpers.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_config.hpp&gt;
+#include &lt;catch2/internal/catch_console_width.hpp&gt;
+#include &lt;catch2/internal/catch_errno_guard.hpp&gt;
+#include &lt;catch2/internal/catch_textflow.hpp&gt;
+#include &lt;catch2/internal/catch_reusable_string_stream.hpp&gt;
+#include &lt;catch2/internal/catch_string_manip.hpp&gt;
+#include &lt;catch2/internal/catch_console_colour.hpp&gt;
+#include &lt;catch2/catch_tostring.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+
+#include &lt;algorithm&gt;
+#include &lt;cfloat&gt;
+#include &lt;cstdio&gt;
+#include &lt;ostream&gt;
+#include &lt;iomanip&gt;
+
+namespace Catch {
+
+    namespace {
+        void listTestNamesOnly(std::ostream&amp; out,
+<span style = "background-color:#fdd">                               std::vector&lt;TestCaseHandle&gt; const&amp; tests) {
+            for (auto const&amp; test : tests) {
+                auto const&amp; testCaseInfo = test.getTestCaseInfo();</span>
+
+<span style = "background-color:#fdd">                if (startsWith(testCaseInfo.name, '#')) {
+                    out &lt;&lt; '"' &lt;&lt; testCaseInfo.name &lt;&lt; '"';
+                } else {
+                    out &lt;&lt; testCaseInfo.name;</span>
+                }
+
+<span style = "background-color:#fdd">                out &lt;&lt; '\n';
+            }
+            out &lt;&lt; std::flush;
+        }</span>
+    } // end unnamed namespace
+
+
+    // Because formatting using c++ streams is stateful, drop down to C is
+    // required Alternatively we could use stringstream, but its performance
+    // is... not good.
+<span style = "background-color:#fdd">    std::string getFormattedDuration( double duration ) {</span>
+        // Max exponent + 1 is required to represent the whole part
+        // + 1 for decimal point
+        // + 3 for the 3 decimal places
+        // + 1 for null terminator
+<span style = "background-color:#fdd">        const std::size_t maxDoubleSize = DBL_MAX_10_EXP + 1 + 1 + 3 + 1;</span>
+        char buffer[maxDoubleSize];
+
+        // Save previous errno, to prevent sprintf from overwriting it
+<span style = "background-color:#fdd">        ErrnoGuard guard;</span>
+#ifdef _MSC_VER
+<span style = "background-color:#fdd">        size_t printedLength = static_cast&lt;size_t&gt;(</span>
+            sprintf_s( buffer, "%.3f", duration ) );
+#else
+        size_t printedLength = static_cast&lt;size_t&gt;(
+            std::snprintf( buffer, maxDoubleSize, "%.3f", duration ) );
+#endif
+<span style = "background-color:#fdd">        return std::string( buffer, printedLength );
+    }</span>
+
+<span style = "background-color:#dfd">    bool shouldShowDuration( IConfig const&amp; config, double duration ) {
+        if ( config.showDurations() == ShowDurations::Always ) {</span>
+<span style = "background-color:#fdd">            return true;</span>
+        }
+<span style = "background-color:#dfd">        if ( config.showDurations() == ShowDurations::Never ) {</span>
+<span style = "background-color:#fdd">            return false;</span>
+        }
+<span style = "background-color:#dfd">        const double min = config.minDuration();
+        return min &gt;= 0 &amp;&amp; duration &gt;= min;
+    }</span>
+
+<span style = "background-color:#fdd">    std::string serializeFilters( std::vector&lt;std::string&gt; const&amp; filters ) {</span>
+        // We add a ' ' separator between each filter
+<span style = "background-color:#fdd">        size_t serialized_size = filters.size() - 1;
+        for (auto const&amp; filter : filters) {
+            serialized_size += filter.size();
+        }</span>
+
+<span style = "background-color:#fdd">        std::string serialized;
+        serialized.reserve(serialized_size);
+        bool first = true;</span>
+
+<span style = "background-color:#fdd">        for (auto const&amp; filter : filters) {
+            if (!first) {
+                serialized.push_back(' ');</span>
+            }
+<span style = "background-color:#fdd">            first = false;
+            serialized.append(filter);
+        }</span>
+
+<span style = "background-color:#fdd">        return serialized;
+    }</span>
+
+<span style = "background-color:#fdd">    std::ostream&amp; operator&lt;&lt;( std::ostream&amp; out, lineOfChars value ) {
+        for ( size_t idx = 0; idx &lt; CATCH_CONFIG_CONSOLE_WIDTH - 1; ++idx ) {
+            out.put( value.c );
+        }
+        return out;
+    }</span>
+
+    void
+    defaultListReporters( std::ostream&amp; out,
+                          std::vector&lt;ReporterDescription&gt; const&amp; descriptions,
+<span style = "background-color:#fdd">                          Verbosity verbosity ) {
+        out &lt;&lt; "Available reporters:\n";
+        const auto maxNameLen =</span>
+            std::max_element( descriptions.begin(),
+                              descriptions.end(),
+                              []( ReporterDescription const&amp; lhs,
+                                  ReporterDescription const&amp; rhs ) {
+<span style = "background-color:#fdd">                                  return lhs.name.size() &lt; rhs.name.size();
+                              } )</span>
+                -&gt;name.size();
+
+<span style = "background-color:#fdd">        for ( auto const&amp; desc : descriptions ) {
+            if ( verbosity == Verbosity::Quiet ) {
+                out &lt;&lt; TextFlow::Column( desc.name )</span>
+                           .indent( 2 )
+                           .width( 5 + maxNameLen )
+                    &lt;&lt; '\n';
+<span style = "background-color:#fdd">            } else {
+                out &lt;&lt; TextFlow::Column( desc.name + ':' )</span>
+                               .indent( 2 )
+                               .width( 5 + maxNameLen ) +
+                           TextFlow::Column( desc.description )
+                               .initialIndent( 0 )
+                               .indent( 2 )
+                               .width( CATCH_CONFIG_CONSOLE_WIDTH - maxNameLen - 8 )
+                    &lt;&lt; '\n';
+            }
+<span style = "background-color:#fdd">        }
+        out &lt;&lt; '\n' &lt;&lt; std::flush;
+    }</span>
+
+    void defaultListListeners( std::ostream&amp; out,
+<span style = "background-color:#fdd">                               std::vector&lt;ListenerDescription&gt; const&amp; descriptions ) {
+        out &lt;&lt; "Registered listeners:\n";</span>
+
+<span style = "background-color:#fdd">        if(descriptions.empty()) {
+            return;</span>
+        }
+
+<span style = "background-color:#fdd">        const auto maxNameLen =</span>
+            std::max_element( descriptions.begin(),
+                              descriptions.end(),
+                              []( ListenerDescription const&amp; lhs,
+                                  ListenerDescription const&amp; rhs ) {
+<span style = "background-color:#fdd">                                  return lhs.name.size() &lt; rhs.name.size();
+                              } )</span>
+                -&gt;name.size();
+
+<span style = "background-color:#fdd">        for ( auto const&amp; desc : descriptions ) {
+            out &lt;&lt; TextFlow::Column( static_cast&lt;std::string&gt;( desc.name ) +</span>
+                                     ':' )
+                           .indent( 2 )
+                           .width( maxNameLen + 5 ) +
+                       TextFlow::Column( desc.description )
+                           .initialIndent( 0 )
+                           .indent( 2 )
+                           .width( CATCH_CONFIG_CONSOLE_WIDTH - maxNameLen - 8 )
+                &lt;&lt; '\n';
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        out &lt;&lt; '\n' &lt;&lt; std::flush;
+    }</span>
+
+    void defaultListTags( std::ostream&amp; out,
+                          std::vector&lt;TagInfo&gt; const&amp; tags,
+<span style = "background-color:#fdd">                          bool isFiltered ) {
+        if ( isFiltered ) {
+            out &lt;&lt; "Tags for matching test cases:\n";
+        } else {
+            out &lt;&lt; "All available tags:\n";</span>
+        }
+
+<span style = "background-color:#fdd">        for ( auto const&amp; tagCount : tags ) {
+            ReusableStringStream rss;
+            rss &lt;&lt; "  " &lt;&lt; std::setw( 2 ) &lt;&lt; tagCount.count &lt;&lt; "  ";
+            auto str = rss.str();
+            auto wrapper = TextFlow::Column( tagCount.all() )</span>
+                               .initialIndent( 0 )
+                               .indent( str.size() )
+                               .width( CATCH_CONFIG_CONSOLE_WIDTH - 10 );
+<span style = "background-color:#fdd">            out &lt;&lt; str &lt;&lt; wrapper &lt;&lt; '\n';
+        }
+        out &lt;&lt; pluralise(tags.size(), "tag"_sr) &lt;&lt; "\n\n" &lt;&lt; std::flush;
+    }</span>
+
+<span style = "background-color:#fdd">    void defaultListTests(std::ostream&amp; out, ColourImpl* streamColour, std::vector&lt;TestCaseHandle&gt; const&amp; tests, bool isFiltered, Verbosity verbosity) {</span>
+        // We special case this to provide the equivalent of old
+        // `--list-test-names-only`, which could then be used by the
+        // `--input-file` option.
+<span style = "background-color:#fdd">        if (verbosity == Verbosity::Quiet) {
+            listTestNamesOnly(out, tests);
+            return;</span>
+        }
+
+<span style = "background-color:#fdd">        if (isFiltered) {
+            out &lt;&lt; "Matching test cases:\n";
+        } else {
+            out &lt;&lt; "All available test cases:\n";</span>
+        }
+
+<span style = "background-color:#fdd">        for (auto const&amp; test : tests) {
+            auto const&amp; testCaseInfo = test.getTestCaseInfo();
+            Colour::Code colour = testCaseInfo.isHidden()</span>
+                ? Colour::SecondaryText
+                : Colour::None;
+<span style = "background-color:#fdd">            auto colourGuard = streamColour-&gt;guardColour( colour ).engage( out );</span>
+
+<span style = "background-color:#fdd">            out &lt;&lt; TextFlow::Column(testCaseInfo.name).indent(2) &lt;&lt; '\n';
+            if (verbosity &gt;= Verbosity::High) {
+                out &lt;&lt; TextFlow::Column(Catch::Detail::stringify(testCaseInfo.lineInfo)).indent(4) &lt;&lt; '\n';</span>
+            }
+<span style = "background-color:#fdd">            if (!testCaseInfo.tags.empty() &amp;&amp;</span>
+                verbosity &gt; Verbosity::Quiet) {
+<span style = "background-color:#fdd">                out &lt;&lt; TextFlow::Column(testCaseInfo.tagsAsString()).indent(6) &lt;&lt; '\n';</span>
+            }
+<span style = "background-color:#fdd">        }</span>
+
+<span style = "background-color:#fdd">        if (isFiltered) {
+            out &lt;&lt; pluralise(tests.size(), "matching test case"_sr);
+        } else {
+            out &lt;&lt; pluralise(tests.size(), "test case"_sr);</span>
+        }
+<span style = "background-color:#fdd">        out &lt;&lt; "\n\n" &lt;&lt; std::flush;
+    }</span>
+
+    namespace {
+        class SummaryColumn {
+        public:
+            SummaryColumn( std::string suffix, Colour::Code colour ):
+<span style = "background-color:#fdd">                m_suffix( CATCH_MOVE( suffix ) ), m_colour( colour ) {}</span>
+
+<span style = "background-color:#fdd">            SummaryColumn&amp;&amp; addRow( std::uint64_t count ) &amp;&amp; {
+                std::string row = std::to_string(count);
+                auto const new_width = std::max( m_width, row.size() );
+                if ( new_width &gt; m_width ) {
+                    for ( auto&amp; oldRow : m_rows ) {
+                        oldRow.insert( 0, new_width - m_width, ' ' );
+                    }
+                } else {
+                    row.insert( 0, m_width - row.size(), ' ' );</span>
+                }
+<span style = "background-color:#fdd">                m_width = new_width;
+                m_rows.push_back( row );
+                return std::move( *this );
+            }</span>
+
+<span style = "background-color:#fdd">            std::string const&amp; getSuffix() const { return m_suffix; }
+            Colour::Code getColour() const { return m_colour; }
+            std::string const&amp; getRow( std::size_t index ) const {
+                return m_rows[index];
+            }</span>
+
+        private:
+            std::string m_suffix;
+            Colour::Code m_colour;
+<span style = "background-color:#fdd">            std::size_t m_width = 0;</span>
+            std::vector&lt;std::string&gt; m_rows;
+        };
+
+        void printSummaryRow( std::ostream&amp; stream,
+                              ColourImpl&amp; colour,
+                              StringRef label,
+                              std::vector&lt;SummaryColumn&gt; const&amp; cols,
+<span style = "background-color:#fdd">                              std::size_t row ) {
+            for ( auto const&amp; col : cols ) {
+                auto const&amp; value = col.getRow( row );
+                auto const&amp; suffix = col.getSuffix();
+                if ( suffix.empty() ) {
+                    stream &lt;&lt; label &lt;&lt; ": ";
+                    if ( value != "0" ) {
+                        stream &lt;&lt; value;
+                    } else {
+                        stream &lt;&lt; colour.guardColour( Colour::Warning )</span>
+                               &lt;&lt; "- none -";
+<span style = "background-color:#fdd">                    }
+                } else if ( value != "0" ) {
+                    stream &lt;&lt; colour.guardColour( Colour::LightGrey ) &lt;&lt; " | "</span>
+                           &lt;&lt; colour.guardColour( col.getColour() ) &lt;&lt; value
+                           &lt;&lt; ' ' &lt;&lt; suffix;
+                }
+<span style = "background-color:#fdd">            }
+            stream &lt;&lt; '\n';
+        }</span>
+    } // namespace
+
+    void printTestRunTotals( std::ostream&amp; stream,
+                             ColourImpl&amp; streamColour,
+<span style = "background-color:#dfd">                             Totals const&amp; totals ) {
+        if ( totals.testCases.total() == 0 ) {</span>
+<span style = "background-color:#fdd">            stream &lt;&lt; streamColour.guardColour( Colour::Warning )</span>
+                   &lt;&lt; "No tests ran\n";
+<span style = "background-color:#fdd">            return;</span>
+        }
+
+<span style = "background-color:#dfd">        if ( totals.assertions.total() &gt; 0 &amp;&amp; totals.testCases.allPassed() ) {
+            stream &lt;&lt; streamColour.guardColour( Colour::ResultSuccess )</span>
+                   &lt;&lt; "All tests passed";
+<span style = "background-color:#dfd">            stream &lt;&lt; " ("</span>
+                   &lt;&lt; pluralise( totals.assertions.passed, "assertion"_sr )
+                   &lt;&lt; " in "
+                   &lt;&lt; pluralise( totals.testCases.passed, "test case"_sr )
+                   &lt;&lt; ')' &lt;&lt; '\n';
+<span style = "background-color:#dfd">            return;</span>
+        }
+
+<span style = "background-color:#fdd">        std::vector&lt;SummaryColumn&gt; columns;</span>
+        // Don't include "skipped assertions" in total count
+<span style = "background-color:#fdd">        const auto totalAssertionCount =</span>
+            totals.assertions.total() - totals.assertions.skipped;
+<span style = "background-color:#fdd">        columns.push_back( SummaryColumn( "", Colour::None )</span>
+                               .addRow( totals.testCases.total() )
+                               .addRow( totalAssertionCount ) );
+<span style = "background-color:#fdd">        columns.push_back( SummaryColumn( "passed", Colour::Success )</span>
+                               .addRow( totals.testCases.passed )
+                               .addRow( totals.assertions.passed ) );
+<span style = "background-color:#fdd">        columns.push_back( SummaryColumn( "failed", Colour::ResultError )</span>
+                               .addRow( totals.testCases.failed )
+                               .addRow( totals.assertions.failed ) );
+<span style = "background-color:#fdd">        columns.push_back( SummaryColumn( "skipped", Colour::Skip )</span>
+                               .addRow( totals.testCases.skipped )
+                               // Don't print "skipped assertions"
+                               .addRow( 0 ) );
+<span style = "background-color:#fdd">        columns.push_back(</span>
+            SummaryColumn( "failed as expected", Colour::ResultExpectedFailure )
+                .addRow( totals.testCases.failedButOk )
+                .addRow( totals.assertions.failedButOk ) );
+<span style = "background-color:#fdd">        printSummaryRow( stream, streamColour, "test cases"_sr, columns, 0 );
+        printSummaryRow( stream, streamColour, "assertions"_sr, columns, 1 );
+    }</span>
+
+} // namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>

@@ -1,0 +1,133 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+        <meta charset="utf-8"/>
+	    <title>catch_registry_hub.cpp</title>
+	    <link href="../../third-party/google-code-prettify/prettify-CppCoverage.css" type="text/css" rel="stylesheet" />
+	    <script type="text/javascript" src="../../third-party/google-code-prettify/prettify.js"></script>
+	</head>
+    <body onload="prettyPrint()">
+        <h4></h4>
+        <pre class="prettyprint lang-cpp linenums">
+
+//              Copyright Catch2 Authors
+// Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//        https://www.boost.org/LICENSE_1_0.txt)
+
+// SPDX-License-Identifier: BSL-1.0
+#include &lt;catch2/interfaces/catch_interfaces_registry_hub.hpp&gt;
+
+#include &lt;catch2/internal/catch_context.hpp&gt;
+#include &lt;catch2/internal/catch_enforce.hpp&gt;
+#include &lt;catch2/internal/catch_test_case_registry_impl.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+#include &lt;catch2/internal/catch_exception_translator_registry.hpp&gt;
+#include &lt;catch2/internal/catch_tag_alias_registry.hpp&gt;
+#include &lt;catch2/internal/catch_startup_exception_registry.hpp&gt;
+#include &lt;catch2/internal/catch_singletons.hpp&gt;
+#include &lt;catch2/internal/catch_enum_values_registry.hpp&gt;
+#include &lt;catch2/catch_test_case_info.hpp&gt;
+#include &lt;catch2/internal/catch_noncopyable.hpp&gt;
+#include &lt;catch2/interfaces/catch_interfaces_reporter_factory.hpp&gt;
+#include &lt;catch2/internal/catch_move_and_forward.hpp&gt;
+#include &lt;catch2/internal/catch_reporter_registry.hpp&gt;
+
+#include &lt;exception&gt;
+
+namespace Catch {
+
+    namespace {
+
+        class RegistryHub : public IRegistryHub,
+                            public IMutableRegistryHub,
+                            private Detail::NonCopyable {
+
+        public: // IRegistryHub
+<span style = "background-color:#dfd">            RegistryHub() = default;
+            ReporterRegistry const&amp; getReporterRegistry() const override {
+                return m_reporterRegistry;
+            }
+            ITestCaseRegistry const&amp; getTestCaseRegistry() const override {
+                return m_testCaseRegistry;
+            }</span>
+<span style = "background-color:#fdd">            IExceptionTranslatorRegistry const&amp; getExceptionTranslatorRegistry() const override {
+                return m_exceptionTranslatorRegistry;
+            }</span>
+<span style = "background-color:#dfd">            ITagAliasRegistry const&amp; getTagAliasRegistry() const override {
+                return m_tagAliasRegistry;
+            }
+            StartupExceptionRegistry const&amp; getStartupExceptionRegistry() const override {
+                return m_exceptionRegistry;
+            }</span>
+
+        public: // IMutableRegistryHub
+<span style = "background-color:#fdd">            void registerReporter( std::string const&amp; name, IReporterFactoryPtr factory ) override {
+                m_reporterRegistry.registerReporter( name, CATCH_MOVE(factory) );
+            }
+            void registerListener( Detail::unique_ptr&lt;EventListenerFactory&gt; factory ) override {
+                m_reporterRegistry.registerListener( CATCH_MOVE(factory) );
+            }</span>
+<span style = "background-color:#dfd">            void registerTest( Detail::unique_ptr&lt;TestCaseInfo&gt;&amp;&amp; testInfo, Detail::unique_ptr&lt;ITestInvoker&gt;&amp;&amp; invoker ) override {
+                m_testCaseRegistry.registerTest( CATCH_MOVE(testInfo), CATCH_MOVE(invoker) );
+            }</span>
+<span style = "background-color:#fdd">            void registerTranslator( Detail::unique_ptr&lt;IExceptionTranslator&gt;&amp;&amp; translator ) override {
+                m_exceptionTranslatorRegistry.registerTranslator( CATCH_MOVE(translator) );
+            }
+            void registerTagAlias( std::string const&amp; alias, std::string const&amp; tag, SourceLineInfo const&amp; lineInfo ) override {
+                m_tagAliasRegistry.add( alias, tag, lineInfo );
+            }
+            void registerStartupException() noexcept override {</span>
+#if !defined(CATCH_CONFIG_DISABLE_EXCEPTIONS)
+<span style = "background-color:#fdd">                m_exceptionRegistry.add(std::current_exception());</span>
+#else
+                CATCH_INTERNAL_ERROR("Attempted to register active exception under CATCH_CONFIG_DISABLE_EXCEPTIONS!");
+#endif
+<span style = "background-color:#fdd">            }
+            IMutableEnumValuesRegistry&amp; getMutableEnumValuesRegistry() override {
+                return m_enumValuesRegistry;
+            }</span>
+
+        private:
+            TestRegistry m_testCaseRegistry;
+            ReporterRegistry m_reporterRegistry;
+            ExceptionTranslatorRegistry m_exceptionTranslatorRegistry;
+            TagAliasRegistry m_tagAliasRegistry;
+            StartupExceptionRegistry m_exceptionRegistry;
+            Detail::EnumValuesRegistry m_enumValuesRegistry;
+        };
+    }
+
+    using RegistryHubSingleton = Singleton&lt;RegistryHub, IRegistryHub, IMutableRegistryHub&gt;;
+
+<span style = "background-color:#dfd">    IRegistryHub const&amp; getRegistryHub() {
+        return RegistryHubSingleton::get();
+    }
+    IMutableRegistryHub&amp; getMutableRegistryHub() {
+        return RegistryHubSingleton::getMutable();
+    }
+    void cleanUp() {
+        cleanupSingletons();
+        cleanUpContext();
+    }</span>
+<span style = "background-color:#fdd">    std::string translateActiveException() {
+        return getRegistryHub().getExceptionTranslatorRegistry().translateActiveException();
+    }</span>
+
+
+} // end namespace Catch</pre>
+        <hr />
+        <table width="100%">
+            <thead>
+                <tr>
+                    <th align="center">
+                        <small>Generated by</small>
+                        <a href="https://github.com/OpenCppCoverage/OpenCppCoverage/releases">
+                            <strong>OpenCppCoverage (Version: 0.9.9.0)</strong>
+                        </a>
+                    </th>
+                </tr>
+            </thead>
+        </table>
+    </body>
+</html>
