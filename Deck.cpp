@@ -11,6 +11,8 @@ Deck::Deck() {
 	}
 }
 
+Deck::Deck(std::vector<Card> presetCards) : cards(std::move(presetCards)) {}
+
 void Deck::shuffle() {
 	std::random_device rd;
 	std::mt19937 rng(rd());
