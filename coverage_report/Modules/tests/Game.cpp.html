@@ -15,8 +15,8 @@
 <span style = "background-color:#dfd">Game::Game(int startingBalance) : balance(startingBalance) {}</span>
 
 <span style = "background-color:#dfd">void Game::startRound(int bet, Deck presetDeck) {
-	if (bet &lt;= 0 || bet &gt; balance) {</span>
-<span style = "background-color:#fdd">		throw std::invalid_argument("Ugyldig indsats");</span>
+	if (bet &lt;= 0 || bet &gt; balance) {
+		throw std::invalid_argument("Ugyldig indsats");</span>
 	}
 
 <span style = "background-color:#dfd">	currentBet = bet;
@@ -36,27 +36,27 @@
 void Game::startRound(int bet) {
 	Deck freshDeck;
 	freshDeck.shuffle();
-	startRound(bet, std::move(freshDeck));
-}</span>
+	startRound(bet, std::move(freshDeck));</span>
+<span style = "background-color:#fdd">}</span>
 
 
 
 <span style = "background-color:#dfd">GameResult Game::playerHit() {
-	if (gameOver) {
-		return determineOutcome();</span>
+	if (gameOver) {</span>
+<span style = "background-color:#fdd">		return determineOutcome();</span>
 	}
 
 <span style = "background-color:#dfd">	playerHand.addCard(deck.dealCard());</span>
 
-<span style = "background-color:#dfd">	if (playerHand.isBust()) {</span>
-<span style = "background-color:#fdd">		gameOver = true;
+<span style = "background-color:#dfd">	if (playerHand.isBust()) {
+		gameOver = true;
 		GameResult result = GameResult::PlayerBust;
 		applyPayout(result);
 		return GameResult::PlayerBust;</span>
 	}
 
-<span style = "background-color:#dfd">	return GameResult::InProgress;
-}</span>
+<span style = "background-color:#fdd">	return GameResult::InProgress;</span>
+<span style = "background-color:#dfd">}</span>
 
 <span style = "background-color:#dfd">GameResult Game::playerStand() {
 	if (gameOver) {</span>
@@ -74,19 +74,19 @@ void Game::startRound(int bet) {
 	if (playerHand.isBust()) {</span>
 <span style = "background-color:#fdd">		return GameResult::PlayerBust;</span>
 	}
-<span style = "background-color:#dfd">	if (dealer.getHand().isBust()) {</span>
-<span style = "background-color:#fdd">		return GameResult::PlayerWins;</span>
+<span style = "background-color:#dfd">	if (dealer.getHand().isBust()) {
+		return GameResult::PlayerWins;</span>
 	}
-<span style = "background-color:#dfd">	if (playerHand.isBlackjack() &amp;&amp; !dealer.getHand().isBlackjack()) {</span>
-<span style = "background-color:#fdd">		return GameResult::PlayerBlackjack;</span>
+<span style = "background-color:#dfd">	if (playerHand.isBlackjack() &amp;&amp; !dealer.getHand().isBlackjack()) {
+		return GameResult::PlayerBlackjack;</span>
 	}
 
 <span style = "background-color:#dfd">	int playerValue = playerHand.getValue();
 	int dealerValue = dealer.getHand().getValue();</span>
 
 <span style = "background-color:#dfd">	if (playerValue &gt; dealerValue) return GameResult::PlayerWins;
-	if (dealerValue &gt; playerValue) return GameResult::DealerWins;</span>
-<span style = "background-color:#fdd">	return GameResult::Push;</span>
+	if (dealerValue &gt; playerValue) return GameResult::DealerWins;
+	return GameResult::Push;</span>
 
 <span style = "background-color:#dfd">}</span>
 
@@ -96,16 +96,16 @@ void Game::startRound(int bet) {
 		// Spilleren taber indsatsen
 <span style = "background-color:#fdd">			break;</span>
 		case GameResult::PlayerBlackjack:
-<span style = "background-color:#fdd">		balance += static_cast&lt;int&gt;(currentBet * 2.5); // Blackjack betaler 3:2
+<span style = "background-color:#dfd">		balance += static_cast&lt;int&gt;(currentBet * 2.5); // Blackjack betaler 3:2
 			break;</span>
 		case GameResult::PlayerWins:
-<span style = "background-color:#fdd">		balance += currentBet * 2; // Spilleren vinder dobbelt indsatsen
+<span style = "background-color:#dfd">		balance += currentBet * 2; // Spilleren vinder dobbelt indsatsen
 			break;</span>
 		case GameResult::DealerWins:
 		// Spilleren taber indsatsen
 <span style = "background-color:#fdd">			break;</span>
 		case GameResult::Push:
-<span style = "background-color:#fdd">		balance += currentBet; // Spilleren fÃ¥r indsatsen tilbage</span>
+<span style = "background-color:#dfd">		balance += currentBet; // Spilleren fÃ¥r indsatsen tilbage</span>
 			break;
 		default:
 			break;
@@ -126,11 +126,11 @@ void Game::startRound(int bet) {
 	return gameOver;
 }</span>
 
-<span style = "background-color:#fdd">int Game::getBalance() const {
+<span style = "background-color:#dfd">int Game::getBalance() const {
 	return balance;
 }</span>
 
-<span style = "background-color:#fdd">int Game::getCurrentBet() const {
+<span style = "background-color:#dfd">int Game::getCurrentBet() const {
 	return currentBet;
 }</span></pre>
         <hr />

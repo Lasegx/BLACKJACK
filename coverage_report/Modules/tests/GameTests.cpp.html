@@ -10,75 +10,52 @@
         <h4></h4>
         <pre class="prettyprint lang-cpp linenums">
 #include &lt;catch2/catch_test_macros.hpp&gt;
+#include &lt;stdexcept&gt;
 #include "Game.h"
 
-<span style = "background-color:#dfd">TEST_CASE("nyt spil deler 2 kort til hver spiller og dealer") {
-	std::vector&lt;Card&gt; cards = {</span>
-		{ Rank::Five, Suit::Clubs },
-		{ Rank::King, Suit::Hearts },
-		{ Rank::Six, Suit::Diamonds },
-		{ Rank::Seven, Suit::Spades }
+<span style = "background-color:#dfd">TEST_CASE("startRound afviser ugyldig indsats") {</span>
+	
+<span style = "background-color:#dfd">	Game game(100);</span>
+
+<span style = "background-color:#dfd">	REQUIRE_THROWS_AS(game.startRound(0), std::invalid_argument);
+	REQUIRE_THROWS_AS(game.startRound(-10), std::invalid_argument);
+	REQUIRE_THROWS_AS(game.startRound(101), std::invalid_argument);
+}</span>
+
+
+<span style = "background-color:#dfd">TEST_CASE("playerHit giver PlayerBust nÃ¥r spilleren kommer over 21") {</span>
+	
+<span style = "background-color:#dfd">	std::vector&lt;Card&gt; cards = {</span>
+		{ Rank::Ten, Suit::Clubs }, // Player
+		{ Rank::Five, Suit::Hearts }, // Dealer
+		{ Rank::Nine, Suit::Diamonds }, // Player = 19
+		{ Rank::Ten, Suit::Spades }, // Dealer = 15
+		{ Rank::Five, Suit::Clubs } // Player hit = 24
 	};
 
 
 <span style = "background-color:#dfd">	Game game(100);
 	game.startRound(10, Deck(cards));</span>
+	
+<span style = "background-color:#dfd">	GameResult result = game.playerHit();</span>
 
-<span style = "background-color:#dfd">	REQUIRE(game.getPlayerValue() == 17);
-	REQUIRE(game.getDealerValue() == 11);
-	REQUIRE_FALSE(game.isOver());
-}</span>
+<span style = "background-color:#dfd">	REQUIRE(result == GameResult::PlayerBust);
+	REQUIRE(game.isOver());
+	REQUIRE(game.getPlayerValue() == 24);
+	REQUIRE(game.getBalance() == 90);
+	REQUIRE(game.getCurrentBet() == 0);</span>
+	
 
-<span style = "background-color:#dfd">TEST_CASE("playerHit opdaterer spillerens vÃ¦rdi") {
-	std::vector&lt;Card&gt; cards = {</span>
-		{ Rank::Six, Suit::Clubs },
-		{ Rank::Five, Suit::Hearts },
-		{ Rank::Four, Suit::Diamonds },
-		{ Rank::Three, Suit::Spades },
-		{ Rank::Two, Suit::Hearts }
-	};
+<span style = "background-color:#dfd">}</span>
 
-
-<span style = "background-color:#dfd">	Game game(100);
-	game.startRound(10, Deck(cards));</span>
-
-<span style = "background-color:#dfd">	int before = game.getPlayerValue();
-	game.playerHit();
-	int after = game.getPlayerValue();</span>
-
-<span style = "background-color:#dfd">	REQUIRE(after &gt; before);
-	REQUIRE(after == 12);
-}</span>
-
-<span style = "background-color:#dfd">TEST_CASE("playerStand afslutter spillet") {
-	std::vector&lt;Card&gt; cards = {</span>
-		{ Rank::Six, Suit::Clubs },
-		{ Rank::Ten, Suit::Diamonds },
-		{ Rank::Three, Suit::Hearts },
-		{ Rank::Seven, Suit::Spades },
-		{ Rank::Two, Suit::Diamonds },
-		{ Rank::King, Suit::Hearts }
-	};
-
-<span style = "background-color:#dfd">	Game game(100);
-	game.startRound(10, Deck(cards));</span>
-
-<span style = "background-color:#dfd">	REQUIRE(game.getPlayerValue() == 17);</span>
-
-<span style = "background-color:#dfd">	game.playerStand();</span>
-
-<span style = "background-color:#dfd">	REQUIRE(game.isOver());
-	REQUIRE(game.getDealerValue() == 21);
-}</span>
-
-<span style = "background-color:#dfd">TEST_CASE("playerStand giver et gyldigt udfald") {
-	std::vector&lt;Card&gt; cards = {</span>
-		{ Rank::Six, Suit::Clubs },
-		{ Rank::Ten, Suit::Diamonds },
-		{ Rank::Three, Suit::Hearts },
-		{ Rank::Seven, Suit::Spades },
-		{ Rank::Two, Suit::Diamonds },
-		{ Rank::King, Suit::Hearts }
+<span style = "background-color:#dfd">TEST_CASE("spilleren vinder nÃ¥r dealer bust") {</span>
+	
+<span style = "background-color:#dfd">	std::vector&lt;Card&gt; cards = {</span>
+		{ Rank::Ten, Suit::Clubs }, // Player
+		{ Rank::Ten, Suit::Hearts }, // Dealer
+		{ Rank::Eight, Suit::Diamonds }, // Player = 18
+		{ Rank::Six, Suit::Spades }, // Dealer = 16
+		{ Rank::King, Suit::Clubs } // Dealer hit = 26
 	};
 
 <span style = "background-color:#dfd">	Game game(100);
@@ -86,17 +63,78 @@
 
 <span style = "background-color:#dfd">	GameResult result = game.playerStand();</span>
 
-<span style = "background-color:#dfd">	REQUIRE(result == GameResult::DealerWins);
+<span style = "background-color:#dfd">	REQUIRE(result == GameResult::PlayerWins);
+	REQUIRE(game.isOver());
+	REQUIRE(game.getBalance() == 110);
+	REQUIRE(game.getCurrentBet() == 0);
 }</span>
 
-<span style = "background-color:#dfd">TEST_CASE("Kald efter spillet er slut returnerer bare samme udfald") {
-	Game game(100);
-	game.startRound(10);
-	game.playerStand();</span>
+<span style = "background-color:#dfd">TEST_CASE("spilleren vinder med hÃ¸jere vÃ¦rdi end dealer") {
+	std::vector&lt;Card&gt; cards = {</span>
+		{ Rank::Eight, Suit::Spades }, // Dealer kort 2
+		{ Rank::Nine, Suit::Diamonds }, // Player kort 
+		{ Rank::Ten, Suit::Hearts }, // Dealer kort 1
+		{ Rank::Ten, Suit::Clubs } // Player kort 1
+	};
 
-<span style = "background-color:#dfd">	GameResult result = game.playerHit(); // kaldes IGEN, selvom spillet er slut
+<span style = "background-color:#dfd">	Game game(100);
+	game.startRound(10, Deck(cards));</span>
+
+<span style = "background-color:#dfd">	REQUIRE(game.getPlayerValue() == 19);
+	REQUIRE(game.getDealerValue() == 18);</span>
+
+<span style = "background-color:#dfd">	GameResult result = game.playerStand();</span>
+
+<span style = "background-color:#dfd">	REQUIRE(result == GameResult::PlayerWins);
 	REQUIRE(game.isOver());
-	REQUIRE(result != GameResult::InProgress);</span>
+	REQUIRE(game.getBalance() == 110);
+}</span>
+
+<span style = "background-color:#dfd">TEST_CASE("samme vÃ¦rdi giver push") {</span>
+
+<span style = "background-color:#dfd">	std::vector&lt;Card&gt; cards = {</span>
+		{ Rank::Ten, Suit::Clubs }, // Player
+		{ Rank::Ten, Suit::Hearts }, // Dealer
+		{ Rank::Eight, Suit::Diamonds }, // Player = 18
+		{ Rank::Eight, Suit::Spades } // Dealer = 18
+	};
+
+<span style = "background-color:#dfd">	Game game(100);
+	game.startRound(10, Deck(cards));</span>
+
+<span style = "background-color:#dfd">	GameResult result = game.playerStand();</span>
+
+<span style = "background-color:#dfd">	REQUIRE(result == GameResult::Push);
+	REQUIRE(game.isOver());
+	REQUIRE(game.getBalance() == 100);
+	REQUIRE(game.getCurrentBet() == 0);</span>
+
+<span style = "background-color:#dfd">}</span>
+
+<span style = "background-color:#dfd">TEST_CASE("blackjack giver PlayerBlackjack og korrekt udbetaling") {</span>
+
+<span style = "background-color:#dfd">	std::vector&lt;Card&gt; cards = {</span>
+		{ Rank::Eight, Suit::Spades }, //Dealer kort 2
+		{ Rank::King, Suit::Diamonds }, //Player kort 2
+		{ Rank::Ten, Suit::Hearts }, //Player = 21 blackjack
+		{ Rank::Ace, Suit::Clubs } // Dealer = 18
+	};
+
+<span style = "background-color:#dfd">	Game game(100);
+	game.startRound(10, Deck(cards));</span>
+
+<span style = "background-color:#dfd">	REQUIRE(game.getPlayerValue() == 21);
+	REQUIRE(game.getDealerValue() == 18);</span>
+
+<span style = "background-color:#dfd">	GameResult result = game.playerStand();</span>
+
+<span style = "background-color:#dfd">	REQUIRE(result == GameResult::PlayerBlackjack);
+	REQUIRE(game.isOver());</span>
+
+	// 100- 10 + (10*2,5) = 115
+<span style = "background-color:#dfd">	REQUIRE(game.getBalance() == 115);
+	REQUIRE(game.getCurrentBet() == 0);</span>
+
 
 <span style = "background-color:#dfd">}</span></pre>
         <hr />
