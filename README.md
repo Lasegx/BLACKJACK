@@ -1,3 +1,4 @@
+<img width="692" height="972" alt="UML_Blackjack diagram1" src="https://github.com/user-attachments/assets/2486ee98-b54a-4720-898a-55cb97b27733" />
 # Blackjack 🃏
 
 Et konsolbaseret **Blackjack-spil udviklet i C++17** med fokus på objektorienteret design, testbarhed og en klar adskillelse mellem spillogik og brugergrænseflade.
