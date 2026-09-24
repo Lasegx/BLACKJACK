@@ -2,8 +2,7 @@
 
 Et konsolbaseret **Blackjack-spil udviklet i C++17** med fokus på objektorienteret design, testbarhed og en klar adskillelse mellem spillogik og brugergrænseflade.
 
-Projektet er udviklet som en del af Specialisterne Academy og følger de klassiske Blackjack-regler med spiller, dealer, indsatser og blackjack-udbetaling.
-
+Projektet implementerer de klassiske Blackjack-regler med spiller, dealer, indsatser og blackjack-udbetaling. Spillogikken er opdelt i selvstændige klasser og dækket af unit tests, så centrale spilscenarier kan testes deterministisk uden brugerinput
 ## Teknisk fokus
 
 - Objektorienteret design
