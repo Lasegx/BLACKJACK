@@ -2,11 +2,9 @@
 //
 #include "Game.h"
 #include <iostream>
-#include <windows.h>
 #include "BLACKJACK.h"
 
 int main() {
-	SetConsoleOutputCP(CP_UTF8);
 	Game game(100);
 	game.startRound(10);
 
